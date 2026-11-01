@@ -10,131 +10,14 @@ from langchain_core.language_models.chat_models import BaseChatModel
 load_dotenv()
 logger = get_logger("backend.engine.llm")
 
-def get_cf_url(account_id):
-    return f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
-
+# Todo pasa por el llm-router de Oracle con el pool "tars": keys de Groq propias (3 cuentas),
+# separadas de las de los brokers. El router rota las keys y reintenta; aquí no hay nada más.
 API_PROVIDERS_TO_AGENT = [
-    # ---- BLOQUE OPENROUTER
     {
-        "name": "OPENROUTER - FREE 0",
-        "base_url": "https://openrouter.ai/api/v1",
-        "key": "OPENROUTER0",
-        "model": "openrouter/free"
-    },
-    {
-        "name": "OPENROUTER - FREE 1",
-        "base_url": "https://openrouter.ai/api/v1",
-        "key": "OPENROUTER1",
-        "model": "openrouter/free"
-    },
-    {
-        "name": "OPENROUTER - FREE 2",
-        "base_url": "https://openrouter.ai/api/v1",
-        "key": "OPENROUTER2",
-        "model": "openrouter/free"
-    },
-    {
-        "name": "OPENROUTER - FREE 3",
-        "base_url": "https://openrouter.ai/api/v1",
-        "key": "OPENROUTER3",
-        "model": "openrouter/free"
-    },
-    {
-        "name": "OPENROUTER - FREE 4",
-        "base_url": "https://openrouter.ai/api/v1",
-        "key": "OPENROUTER4",
-        "model": "openrouter/free"
-    },
-    {
-        "name": "OPENROUTER - FREE 5",
-        "base_url": "https://openrouter.ai/api/v1",
-        "key": "OPENROUTER5",
-        "model": "openrouter/free"
-    },
-    {
-        "name": "OPENROUTER - FREE 6",
-        "base_url": "https://openrouter.ai/api/v1",
-        "key": "OPENROUTER6",
-        "model": "openrouter/free"
-    },
-    # ---- BLOQUE GROQ
-    # Mismas keys que el pool TARS del llm-router. Modelos vigentes a nov-2026
-    # (GET /openai/v1/models): llama-3.x, qwen3-32b y kimi-k2 ya no existen.
-    {
-        "name": "Groq: GPT-OSS-20B",
-        "base_url": "https://api.groq.com/openai/v1",
-        "key": "GROQ_API_KEY0",
-        "model": "openai/gpt-oss-20b"
-    },
-    {
-        "name": "Groq: Qwen3.8-27B",
-        "base_url": "https://api.groq.com/openai/v1",
-        "key": "GROQ_API_KEY1",
-        "model": "qwen/qwen3.8-27b"
-    },
-    {
-        "name": "Groq: GPT-OSS-120B",
-        "base_url": "https://api.groq.com/openai/v1",
-        "key": "GROQ_API_KEY2",
-        "model": "openai/gpt-oss-120b"
-    },
-    # ---- BLOQUE CLOUDFLARE
-    {
-        "name": "Cloudflare: Nodo-Alfa (Llama 3.1)",
-        "base_url": "CLOUDFLARE_ID0",  # se resuelve dinámicamente con get_cf_url
-        "key": "CLOUDFLARE_TOKEN0",
-        "model": "@cf/meta/llama-3.1-8b-instruct"
-    },
-    {
-        "name": "Cloudflare: Nodo-Beta (LLama 4.0 Scout)",
-        "base_url": "CLOUDFLARE_ID1",
-        "key": "CLOUDFLARE_TOKEN1",
-        "model": "@cf/meta/llama-4-scout-17b-16e-instruct"
-    },
-    {
-        "name": "Cloudflare: Nodo-Gamma (Qwen 3)",
-        "base_url": "CLOUDFLARE_ID2",
-        "key": "CLOUDFLARE_TOKEN2",
-        "model": "@cf/qwen/qwen3-30b-a3b-fp8"
-    },
-    # ---- BLOQUE COHERE
-    {
-        "name": "Cohere: Command-R-Plus (Trial-0)",
-        "base_url": "https://api.cohere.ai/compatibility/v1",  # se resuelve dinámicamente
-        "key": "COHORE_API_KEY0",
-        "model": "command-r-08-2024"
-    },
-    {
-        "name": "Cohere: Command-R-Plus (Trial-1)",
-        "base_url": "https://api.cohere.ai/compatibility/v1",
-        "key": "COHORE_API_KEY1",
-        "model": "command-r-plus-08-2024"
-    },
-    {
-        "name": "Cohere: Command-R-Plus (Trial-2)",
-        "base_url": "https://api.cohere.ai/compatibility/v1",
-        "key": "COHORE_API_KEY2",
-        "model": "command-r-plus-08-2024"
-    },
-    # ---- BLOQUE MISTRAL
-    {
-        "name": "Mistral: Pixtral-Large (Key-0)",
-        "base_url": "https://api.mistral.ai/v1",
-        "key": "MISTRA_KEY0",
-        "model": "pixtral-large-latest"
-    },
-    {
-        "name": "Mistral: Mistral-Small (Key-2)",
-        "base_url": "https://api.mistral.ai/v1",
-        "key": "MISTRA_KEY0",
-        "model": "mistral-small-latest"
-    },
-    # ---- BLOQUE CEREBRAS
-    {
-        "name": "Cerebras api key 0",
-        "base_url": "https://api.cerebras.ai/v1",
-        "key": "CEREBRAS_KEY0",
-        "model": "gpt-oss-120b"
+        "name": "llm-router (Oracle, pool tars)",
+        "base_url": os.getenv("LLM_ROUTER_URL", "http://129.158.233.162:8001/v1"),
+        "key": "LLM_ROUTER_KEY",
+        "model": "tars"
     },
 ]
 
@@ -142,13 +25,8 @@ MAX_RETRIES = 3  # re-intentos antes de saltar al siguiente proveedor
 
 
 def _resolve(prov):
-    """Devuelve (api_key, base_url) del proveedor; None si falta en el .env."""
-    api_key = os.getenv(prov.get("key", ""))
-    base_url = prov["base_url"]
-    if base_url.startswith("CLOUDFLARE_ID"):
-        cf_id = os.getenv(base_url)
-        base_url = get_cf_url(cf_id) if cf_id else None
-    return api_key, base_url
+    """Devuelve (api_key, base_url) del proveedor; la key es None si falta en el .env."""
+    return os.getenv(prov.get("key", "")), prov["base_url"]
 
 
 def _clients():

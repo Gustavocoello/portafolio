@@ -9,7 +9,7 @@ from src.services.agent.lamar.tools.sentinel import LamarSentinel
 
 @tool
 def trigger_full_system_check() -> str:
-    """Performs a health check on all 20+ LLM providers."""
+    """Performs a health check on the LLM router."""
     sentinel = LamarSentinel(API_PROVIDERS_TO_AGENT)
     results = sentinel.test_all_providers(force=True)
 
