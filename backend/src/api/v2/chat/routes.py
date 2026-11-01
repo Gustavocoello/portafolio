@@ -38,8 +38,11 @@ class SendMessageV2Request(BaseModel):
 # =================================================================
 # 1. RUTA DE AGENTES
 # =================================================================
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+DEFAULT_TITLES = (None, "", "Sin titulo", "Sin título")
+
 @chat_v2_router.post("/{chat_id}/message")
-async def send_message_v2(
+def send_message_v2(
     chat_id: UUID,
     payload: SendMessageV2Request,
     db: Session = Depends(get_db),
@@ -56,7 +59,7 @@ async def send_message_v2(
         ).first()
 
         if not chat:
-            chat = Chat(id=chat_id, user_id=user["user_id"], app_id=user["app_id"], title="Sin titulo")
+            chat = Chat(id=chat_id, user_id=user["user_id"], app_id=user["app_id"], title="Sin título")
             db.add(chat)
             db.flush()
 
@@ -87,16 +90,17 @@ async def send_message_v2(
         jarvis_agent = get_jarvis(user["user_id"])
 
         # 6. Autogenerar título
-        if not chat.title or chat.title == "Sin titulo":
+        if chat.title in DEFAULT_TITLES:
             words = user_text.split()
             chat.title = " ".join(words[:10]) + ("..." if len(words) > 10 else "")
             db.commit()
-            SidebarCache.invalidate_user(user["user_id"])
+            SidebarCache.invalidate_user(user["user_id"], user["app_id"])
 
         # ==========================================================
         # EL GENERADOR DE PENSAMIENTOS (ENTERPRISE GRADE)
         # ==========================================================
-        async def generate():
+        # Síncrono a propósito: FastAPI lo itera en un hilo y el agente no congela al resto de requests
+        def generate():
             gen_session = SessionLocal()
             try:
                 yield "[THOUGHT] Analizando la solicitud inicial y preparando estrategia de ejecución...\n"
@@ -189,10 +193,12 @@ async def extract_file(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty filename")
 
     original_filename = file.filename
-    content_type = file.content_type
+    content_type = file.content_type or ""
     
     # Leer el archivo en memoria asíncronamente
-    file_bytes = await file.read()
+    file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="El archivo supera los 10 MB")
     final_text = ""
     user_uuid = user["user_id"]
 

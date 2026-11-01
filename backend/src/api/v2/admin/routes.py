@@ -74,7 +74,7 @@ def verify_admin(
 # ==========================================
 
 @hitl_router.get("/logs")
-async def get_hitl_logs(
+def get_hitl_logs(
     admin_user: dict = Depends(verify_admin), # <-- MAGIA: Bloquea si no es admin
     db: Session = Depends(get_db)
 ):
@@ -90,7 +90,7 @@ async def get_hitl_logs(
 
 
 @hitl_router.get("/sessions")
-async def get_agent_sessions(
+def get_agent_sessions(
     admin_user: dict = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
@@ -106,7 +106,7 @@ async def get_agent_sessions(
 
 
 @hitl_router.post("/logs/{log_id}/resolve")
-async def resolve_log(
+def resolve_log(
     log_id: int, 
     action: ResolveAction, # <-- Pydantic valida automáticamente el body
     admin_user: dict = Depends(verify_admin),
@@ -147,7 +147,7 @@ async def resolve_log(
 
 
 @hitl_router.post("/sessions/{session_id}/pause")
-async def api_pause_session(
+def api_pause_session(
     session_id: uuid.UUID, # <-- FastAPI valida que sea un UUID válido automáticamente
     admin_user: dict = Depends(verify_admin)
 ):

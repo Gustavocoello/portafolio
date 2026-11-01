@@ -2,6 +2,7 @@
 import os
 from urllib.parse import urlencode
 from datetime import timedelta
+from uuid import uuid4
 import httpx  # <-- El reemplazo asíncrono y moderno de 'requests'
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -14,6 +15,9 @@ from src.core.time_helper import get_now
 from src.core.logging import get_logger
 from src.database.models.models import UserToken, User
 from src.database.settings.connection import get_db
+from src.services.cache.redis_client import redis_client
+from src.services.auth.utils.token_crypto import encrypt_token
+from src.services.auth.auth.auth_middleware import get_current_user
 
 logger = get_logger(__name__)
 load_dotenv()
@@ -32,33 +36,26 @@ SCOPE = os.getenv("ONEDRIVE_SCOPES", "")
 # 1. INICIAR EL FLUJO OAUTH
 # ==========================================
 @onedrive_router.get("/login")
-async def onedrive_login(
-    # FastAPI lee el query param ?user_id=... automáticamente
-    user_id: str = Query(None, description="El UUID interno del usuario")
-):
+def onedrive_login(user: dict = Depends(get_current_user)):
     """
-    Redirige al usuario a la página de login de Microsoft.
+    Devuelve la URL de login de Microsoft. El 'state' es aleatorio y se guarda en Redis
+    ligado al usuario autenticado, así nadie puede vincular su OneDrive a la cuenta de otro.
     """
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Error: Se requiere user_id para vincular la cuenta. (Uso: /login?user_id=ID)"
-        )
-        
+    if not redis_client.is_available():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Redis no disponible")
+
+    state = str(uuid4())
+    redis_client.set(f"onedrive:state:{state}", str(user["user_id"]), ttl=300)
+
     params = {
         "client_id": CLIENT_ID,
         "response_type": "code",
         "redirect_uri": REDIRECT_URI,
         "response_mode": "query",
         "scope": " ".join(SCOPE.split()),  # asegura espacios normales
-        "state": user_id  # Guardamos el UUID aquí. Microsoft nos lo devolverá.
+        "state": state,
     }
-
-    auth_url = f"{ONEDRIVE_AUTHORITY}/oauth2/v2.0/authorize?{urlencode(params)}"
-    logger.info(f"Redirigiendo a Microsoft Auth para el usuario: {user_id}")
-    
-    # RedirectResponse es nativo de FastAPI
-    return RedirectResponse(url=auth_url)
+    return {"auth_url": f"{ONEDRIVE_AUTHORITY}/oauth2/v2.0/authorize?{urlencode(params)}"}
 
 
 # ==========================================
@@ -67,7 +64,7 @@ async def onedrive_login(
 @onedrive_router.get("/callback")
 async def callback(
     code: str = Query(None),
-    state: str = Query(None), # Este es el user_id que enviamos en el paso anterior
+    state: str = Query(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -81,16 +78,20 @@ async def callback(
                 detail="Faltan parámetros 'code' o 'state' en la respuesta de Microsoft."
             )
         
-        user_uuid = state # Extraemos el UUID que guardamos en el login
-        
-        # 1. Verificamos que el usuario realmente existe en nuestra DB local
+        # 1. El state solo sirve una vez y dice qué usuario inició el flujo
+        state_key = f"onedrive:state:{state}"
+        user_uuid = redis_client.get(state_key)
+        redis_client.delete(state_key)
+        if not user_uuid:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="State inválido o expirado.")
+        user_uuid = str(user_uuid)
         stmt_user = select(User).filter_by(id=user_uuid)
         internal_user = db.execute(stmt_user).scalar_one_or_none()
 
         if not internal_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, 
-                detail=f"Error: El usuario con ID {user_uuid} no existe en la DB local."
+                detail="El usuario no existe en la DB local."
             )
 
         # 2. Intercambiar el código por el Access Token (ASÍNCRONO)
@@ -124,16 +125,16 @@ async def callback(
         expires_at = get_now() + timedelta(seconds=token_data.get("expires_in", 3600))
 
         if user_token:
-            user_token.access_token = token_data["access_token"]
+            user_token.access_token = encrypt_token(token_data["access_token"])
             if "refresh_token" in token_data:
-                user_token.refresh_token = token_data["refresh_token"]
+                user_token.refresh_token = encrypt_token(token_data["refresh_token"])
             user_token.expires_at = expires_at
         else:
             new_token = UserToken(
                 user_id=internal_user.id,
                 provider="onedrive",
-                access_token=token_data["access_token"],
-                refresh_token=token_data.get("refresh_token"),
+                access_token=encrypt_token(token_data["access_token"]),
+                refresh_token=encrypt_token(token_data["refresh_token"]) if token_data.get("refresh_token") else None,
                 expires_at=expires_at
             )
             db.add(new_token)

@@ -7,21 +7,16 @@ from src.core.logging import get_logger
 from src.core.time_helper import get_now
 from src.database.models.models import UserToken
 from src.database.settings.connection import SessionLocal
+from src.services.auth.utils.token_crypto import encrypt_token, decrypt_token
+from cryptography.fernet import InvalidToken
 from dotenv import load_dotenv
-
-# Importamos nuestro cliente de Redis centralizado
-from src.services.cache.redis_client import redis_client
 
 logger = get_logger(__name__)
 load_dotenv()
 
-DRIVE_ID = os.getenv("ONEDRIVE_DRIVE_ID") 
-
-TENANT_ID = os.getenv("AZURE_TENANT_ID")
 CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET")
 
-TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
 SCOPE = "https://graph.microsoft.com/.default"
 
 # ==========================================
@@ -49,51 +44,12 @@ def upload_to_onedrive(access_token: str, filename: str, file_bytes: bytes) -> s
 
 
 # ==========================================
-# 2. TOKEN DE SERVICIO (App-Only) CON REDIS
+# 2. TOKEN DE USUARIO (Delegated)
 # ==========================================
-def get_onedrive_service_token() -> str:
-    """
-    Obtiene el token de servicio de la aplicación.
-    Utiliza Redis para asegurar que todos los workers compartan el mismo token.
-    """
-    cache_key = "onedrive:service_token"
-    
-    # 1. Intentar obtener de Redis
-    cached_token = redis_client.get(cache_key)
-    if cached_token:
-        return cached_token
-
-    # 2. Si no hay token o expiró, pedimos uno nuevo a Microsoft
-    logger.info("Solicitando nuevo Service Token a Microsoft...")
-    data = {
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "scope": SCOPE,
-        "grant_type": "client_credentials",
-    }
-
-    resp = requests.post(TOKEN_URL, data=data)
-    if resp.status_code != 200:
-        logger.error(f"Error getting OneDrive token: {resp.text}")
-        raise Exception(f"Error getting OneDrive token: {resp.status_code}")
-
-    token_data = resp.json()
-    access_token = token_data["access_token"]
-    expires_in = token_data.get("expires_in", 3600)
-
-    # 3. Guardar en Redis (Le restamos 60 seg al TTL para refrescarlo antes de que expire)
-    safe_ttl = max(10, expires_in - 60)
-    redis_client.set(cache_key, access_token, ttl=safe_ttl)
-
-    return access_token
-
-
-# ==========================================
-# 3. TOKEN DE USUARIO (Delegated)
-# ==========================================
-def get_user_onedrive_token(user_id: str) -> str:
+def get_user_onedrive_token(user_id: str) -> str | None:
     """
     Obtiene el token de acceso de un usuario, refrescándolo si es necesario.
+    Devuelve None si el usuario no vinculó OneDrive.
     Maneja su propia db_session porque puede ser llamado desde hilos en segundo plano.
     """
     db_session = SessionLocal()
@@ -102,7 +58,15 @@ def get_user_onedrive_token(user_id: str) -> str:
         user_token = db_session.execute(stmt).scalar_one_or_none()
         
         if not user_token:
-            raise Exception("El usuario no ha vinculado su cuenta de OneDrive")
+            return None
+
+        try:
+            access_token = decrypt_token(user_token.access_token)
+            refresh_token = decrypt_token(user_token.refresh_token) if user_token.refresh_token else None
+        except InvalidToken:
+            # Tokens guardados en texto plano antes de cifrarlos: hay que volver a vincular
+            logger.warning(f"Token de OneDrive sin cifrar para {user_id}; requiere volver a vincular")
+            return None
 
         now = get_now()
         
@@ -114,7 +78,7 @@ def get_user_onedrive_token(user_id: str) -> str:
                 "client_id": CLIENT_ID,
                 "client_secret": CLIENT_SECRET,
                 "grant_type": "refresh_token",
-                "refresh_token": user_token.refresh_token,
+                "refresh_token": refresh_token,
                 "scope": SCOPE
             }
             
@@ -122,10 +86,11 @@ def get_user_onedrive_token(user_id: str) -> str:
             
             if resp.status_code == 200:
                 token_data = resp.json()
-                user_token.access_token = token_data["access_token"]
+                access_token = token_data["access_token"]
+                user_token.access_token = encrypt_token(access_token)
                 
                 if "refresh_token" in token_data:
-                    user_token.refresh_token = token_data["refresh_token"]
+                    user_token.refresh_token = encrypt_token(token_data["refresh_token"])
                 
                 # Guardar nueva expiración
                 expires_in = token_data.get("expires_in", 3600)
@@ -137,7 +102,7 @@ def get_user_onedrive_token(user_id: str) -> str:
                 logger.error(f"Error al refrescar token OneDrive: {resp.text}")
                 raise Exception("Sesión de OneDrive expirada. Por favor, vincula tu cuenta de nuevo.")
 
-        return user_token.access_token
+        return access_token
 
     except Exception as e:
         db_session.rollback()

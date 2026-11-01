@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
@@ -18,7 +19,7 @@ google_auth_router = APIRouter(prefix="/api/v1/auth/google", tags=["Google Auth"
 
 # 1) Login: Ruta protegida por Clerk JWT
 @google_auth_router.get("/login")
-async def login(
+def login(
     request: Request, 
     user_data: dict = Depends(get_current_user) # FastAPI valida el token y sincroniza al usuario
 ):
@@ -48,7 +49,7 @@ async def login(
 
 # 2) Callback: Ruta que recibe la respuesta de Google
 @google_auth_router.get("/callback")
-async def callback(request: Request):
+def callback(request: Request):
     user_id_from_redis = None
     
     try:
@@ -74,8 +75,8 @@ async def callback(request: Request):
         
         # Si ocurre un error, construimos la URL de fallback hacia el frontend
         if user_id_from_redis:
-            error_url = f"{FRONTEND_URL}/c/{user_id_from_redis}/settings?error=oauth_failed&details={str(e)}"
+            error_url = f"{FRONTEND_URL}/c/{user_id_from_redis}/settings?error=oauth_failed&details={quote(str(e))}"
         else:
-            error_url = f"{FRONTEND_URL}/auth/error?error=oauth_failed&details={str(e)}"
+            error_url = f"{FRONTEND_URL}/auth/error?error=oauth_failed&details={quote(str(e))}"
         
         return RedirectResponse(url=error_url)

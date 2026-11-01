@@ -1,7 +1,7 @@
 # Backend (API) Guidelines
 
 ## How to Use This Guide
-This file contains the specific rules for the core Backend application (Python/Flask). Code-generating agents MUST read this before modifying the backend logic.
+This file contains the specific rules for the core Backend application (Python/FastAPI). Code-generating agents MUST read this before modifying the backend logic.
 
 ## Available Skills
 
@@ -20,15 +20,19 @@ When performing these actions, ALWAYS invoke the corresponding skill FIRST:
 
 ## CRITICAL RULES
 
-1. **Framework**: The backend is built on Python and Flask. Do not use FastAPI or Django patterns.
-2. **Asynchronous Execution**: For long-running AI tasks, use background jobs (APScheduler) to prevent blocking the HTTP response.
-3. **Dependency Injection**: Use Blueprints for routing and isolate the business logic in the `services/` folder.
+1. **Framework**: The backend is built on Python and FastAPI (`main.py`). Do not use Flask or Django patterns.
+2. **Blocking code**: Handlers and stream generators that call the DB, `requests` or the LLM synchronously must be plain `def`, so FastAPI runs them in its threadpool. Use `async def` only when the body really awaits.
+3. **Dependency Injection**: Use `APIRouter` for routing, `Depends(get_db)` / `Depends(get_current_user)` for DB and auth, and isolate the business logic in the `services/` folder.
+4. **LLM messages**: Only `system`, `user` and `assistant` roles go to the LLM. `context` and `mcp-tool` messages are internal (see `LLM_ROLES` in `services/llm/chat/chat_service.py`).
 
 ## Python Development
 
 ```bash
 # Running the server
-python run.py
+uvicorn main:app --reload --port 5000
+
+# Tests
+python -m pytest tests
 
 # Installing new dependencies (Always update requirements.txt)
 pip install <package_name>

@@ -43,7 +43,7 @@ class ChatCache:
         try:
             stmt = (
                 select(Message)
-                .where(Message.chat_id == chat_id)
+                .where(Message.chat_id == chat_id, Message.role.in_(("user", "assistant")))
                 .order_by(Message.created_at.desc())
                 .limit(cls.MAX_MESSAGES)
             )

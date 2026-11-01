@@ -497,12 +497,19 @@
   overflow: hidden;
   position: relative;
   width: 100%;
+  /* Desvanece los bordes para que los logos entren y salgan suave */
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
 }
 
 .tech-scroll {
   display: flex;
-  gap: 2rem;
-  animation: scrollLoop 20s linear infinite;
+  width: max-content; /* sin esto mide lo que el contenedor y el -50% no cae justo en la segunda copia */
+  animation: scrollLoop 60s linear infinite;
+}
+
+.tech-scroll-container:hover .tech-scroll {
+  animation-play-state: paused;
 }
 
 .tech-item {
@@ -512,17 +519,37 @@
   font-size: 2.9rem; /* tamaño de ícono */
   color: #fff;
   padding: 1rem;
+  /* margen y no gap: así las dos mitades miden exactamente lo mismo */
+  margin-right: 2rem;
   border-radius: 12px;
-  backdrop-filter: blur(6px);
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease;
   min-width: 70px;
   min-height: 70px;
 }
-.tech-icon {
-  font-size: 2.7rem;
+
+.tech-item:hover {
+  transform: translateY(-4px) scale(1.08);
 }
 
+.tech-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
 
+.tech-icon {
+  font-size: 2.7rem;
+  display: inline-flex;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tech-scroll {
+    animation: none;
+  }
+  .tech-scroll-container {
+    overflow-x: auto;
+  }
+}
 
 @keyframes scrollLoop {
   from { transform: translateX(0); }
@@ -906,13 +933,19 @@
   max-width: 290px;
   height: auto;
   opacity: 0.9;
-  transition: transform 0.3s ease, opacity 0.3s ease;
+  /* Mismo borde que la terminal de al lado */
+  border: 2px solid #333;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  transition: transform 0.3s ease, opacity 0.3s ease, border-color 0.3s ease;
   transform: translateX(-25px);
 }
 
 .perfil-img:hover {
-  transform: scale(1.05);
+  /* Conserva el translateX para que no salte al hacer hover */
+  transform: translateX(-25px) scale(1.05);
   opacity: 1;
+  border-color: #555;
 }
 
 /* Responsive */
@@ -1032,10 +1065,16 @@
   color: #000000;
 }
 
+
 /* Terminal en tema blanco */
 .landing-container.white-theme .terminal-box {
   background: #f5f5f5;
   border-color: #ddd;
+}
+
+.landing-container.white-theme .perfil-img {
+  border-color: #ddd;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 .landing-container.white-theme .terminal-tabs {

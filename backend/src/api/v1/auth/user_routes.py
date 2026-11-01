@@ -20,7 +20,7 @@ integrations_router = APIRouter(prefix="/api/v1/integrations", tags=["Integratio
 # ==========================================
 
 @user_router.get("/sync", status_code=status.HTTP_200_OK)
-async def sync_user_profile(user_data: dict = Depends(get_current_user)):
+def sync_user_profile(user_data: dict = Depends(get_current_user)):
     """
     Ruta diseñada para ser llamada inmediatamente después del login en el frontend.
     Su única función es sincronizar el perfil de Clerk con la DB local.
@@ -36,7 +36,7 @@ async def sync_user_profile(user_data: dict = Depends(get_current_user)):
     }
     
 @user_router.get("/profile", status_code=status.HTTP_200_OK)
-async def get_user_profile(user_data: dict = Depends(get_current_user)):
+def get_user_profile(user_data: dict = Depends(get_current_user)):
     """
     Retorna los datos completos del usuario desde la DB local 
     para alimentar el componente Config/GeneralTab del SDK.
@@ -57,7 +57,7 @@ async def get_user_profile(user_data: dict = Depends(get_current_user)):
 # ==========================================
 
 @integrations_router.get("/status", status_code=status.HTTP_200_OK)
-async def get_integration_status(
+def get_integration_status(
     user_data: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -80,7 +80,7 @@ async def get_integration_status(
         )
 
 @integrations_router.post("/disconnect/{provider}", status_code=status.HTTP_200_OK)
-async def disconnect_integration(
+def disconnect_integration(
     provider: str, # FastAPI lo lee directo de la URL
     user_data: dict = Depends(get_current_user),
     db: Session = Depends(get_db)

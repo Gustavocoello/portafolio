@@ -6,8 +6,8 @@ import AudioWaves from "@/projects/voice-sphere/animation/AudioWaves";
 import Footer from "@/shared/ui/layout/Footer/Footer.jsx";
 import { storageAdapter, USER_ID_KEY } from "@/shared/utils/storageAdapter";
 // ICONS
-import { FaReact, FaPython, FaNodeJs, FaDatabase, FaDocker, FaGitAlt, FaCodepen, FaUserShield, FaLinkedin, FaGithub } from "react-icons/fa";
-import { SiMongodb, SiOpenai, SiJavascript, SiGnubash} from "react-icons/si";
+import { FaCodepen, FaUserShield, FaLinkedin, FaGithub } from "react-icons/fa";
+import { SiOpenai, SiGnubash } from "react-icons/si";
 import { BsFillMenuButtonWideFill } from "react-icons/bs";
 import { GiBreakingChain } from "react-icons/gi";
 import { IoMdChatbubbles } from "react-icons/io";
@@ -114,16 +114,18 @@ const LandingPage = () => {
   }, [starsVisible]);
 
   // Lista de tecnologías para la cinta
+  // Logos oficiales a color de Devicon (MIT). OpenAI no está ahí y su logo oficial es monocromo.
+  const DEVICON = "https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons";
   const technologies = [
-  { icon: <FaReact /> },       // React
-  { icon: <FaPython /> },      // Python
-  { icon: <SiJavascript /> },  // JavaScript
-  { icon: <FaNodeJs /> },      // Node.js
-  { icon: <FaDatabase /> },    // SQL
-  { icon: <SiMongodb /> },     // MongoDB
-  { icon: <SiOpenai /> },      // OpenAI
-  { icon: <FaDocker /> },      // Docker
-  { icon: <FaGitAlt /> },      // Git
+  { name: "React",      src: `${DEVICON}/react/react-original.svg` },
+  { name: "Python",     src: `${DEVICON}/python/python-original.svg` },
+  { name: "JavaScript", src: `${DEVICON}/javascript/javascript-original.svg` },
+  { name: "Node.js",    src: `${DEVICON}/nodejs/nodejs-original.svg` },
+  { name: "PostgreSQL", src: `${DEVICON}/postgresql/postgresql-original.svg` },
+  { name: "MongoDB",    src: `${DEVICON}/mongodb/mongodb-original.svg` },
+  { name: "OpenAI",     icon: <SiOpenai /> },
+  { name: "Docker",     src: `${DEVICON}/docker/docker-original.svg` },
+  { name: "Git",        src: `${DEVICON}/git/git-original.svg` },
 ];
 
   // SVG minimalista
@@ -1983,16 +1985,18 @@ const LandingPage = () => {
           <h3 className="tech-title">Technologies Used</h3>
           <div className="tech-scroll-container">
             <div className="tech-scroll">
-              {technologies.map((tech, index) => (
-                <div key={`first-${index}`} className="tech-item">
-                  <span className="tech-icon">{tech.icon}</span>
-                </div>
-              ))}
-              {technologies.map((tech, index) => (
-                <div key={`second-${index}`} className="tech-item">
-                  <span className="tech-icon">{tech.icon}</span>
-                </div>
-              ))}
+              {/* 6 copias = 2 mitades idénticas que cubren pantallas anchas; al llegar al -50% la 2da mitad ocupa el lugar de la 1ra y el loop no se nota */}
+              {[0, 1, 2, 3, 4, 5].map((copy) =>
+                technologies.map((tech) => (
+                  <div key={`${copy}-${tech.name}`} className="tech-item" title={tech.name} aria-hidden={copy > 0 || undefined}>
+                    {tech.src ? (
+                      <img className="tech-logo" src={tech.src} alt={copy === 0 ? tech.name : ""} width="48" height="48" loading="lazy" draggable="false" />
+                    ) : (
+                      <span className="tech-icon" role={copy === 0 ? "img" : undefined} aria-label={copy === 0 ? tech.name : undefined}>{tech.icon}</span>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </section>

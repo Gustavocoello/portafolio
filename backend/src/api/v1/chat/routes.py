@@ -1,15 +1,14 @@
-from ast import stmt
 import re
 import os
 import json
-import asyncio
-import threading
+from io import BytesIO
+from collections import defaultdict
 from typing import Optional, Dict, Any
 from uuid import UUID
 from queue import Queue, Empty
-from sqlalchemy import select, delete
+from sqlalchemy import select
 # FastAPI
-from fastapi import APIRouter, Depends, Request, Response, BackgroundTasks, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, Depends, Request, BackgroundTasks, UploadFile, File, HTTPException, status, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -18,21 +17,28 @@ from pydantic import BaseModel
 from src.core.logging import get_logger
 from src.core.time_helper import get_now
 from src.services.cache.redis_cache import ChatCache
+from src.services.cache.redis_client import redis_client
 from src.database.settings.connection import SessionLocal, get_db
 from src.services.cache.redis_sidebar import SidebarCache
 from src.services.llm.chat.free_tier import generate_prompt
 from src.database.models.models import Chat, Message, Document
 from src.services.mcps.client.client_manager import MCPClientManager
-from src.services.llm.chat.llm_router import completion, completion_stream
-from src.services.llm.chat.chat_service import build_payload, execute_mcp_tool, summarize_and_trim
-from src.services.auth.auth.auth_middleware import get_current_user
+from src.services.llm.chat.llm_router import completion_stream
+from src.services.llm.chat.chat_service import build_payload, execute_mcp_tool, summarize_and_trim, LLM_ROLES
+from src.services.auth.auth.auth_middleware import get_current_user, authenticate
 from src.services.integrations.onedrive.onedrive_service import upload_to_onedrive, get_user_onedrive_token
 from src.services.integrations.azure.azure_vision import analyze_image_with_azure
+from src.services.integrations.microsoft.markitdown_extractor import extract_text_from_file
 
 # -- Logger --
 logger = get_logger('routes')
-# -- Event Queue --
-event_queue = Queue()
+# -- Event Queues (una por usuario: cada quien solo ve sus propios eventos) --
+# shortcut: colas en memoria del proceso, válido con un solo worker de uvicorn; pasar a Redis pub/sub si se escala a varios
+event_queues = defaultdict(Queue)
+
+ANON_LIMIT = 5
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+DEFAULT_TITLES = (None, "", "Sin titulo", "Sin título")
 # -- MCP Client --
 mcp_client = MCPClientManager(user_id=None)  # user_id se asignará dinámicamente en cada llamada
 
@@ -60,34 +66,38 @@ def secure_filename(filename: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_\.-]', '_', os.path.basename(filename))
 
 ## ----------- Mensajes de la IA sin memoria --------------
-@search_router.post("/prompt")
-async def handle_search_prompt(request: Request, response: Response, payload: SearchPromptRequest):
-    # En FastAPI manejamos las sesiones anónimas con Cookies
-    counter = int(request.cookies.get('anon_prompt_count', 0))
+def _anon_prompt_count(ip: str) -> Optional[int]:
+    """Cuenta los prompts anónimos de una IP hoy. None si Redis no está disponible."""
+    if not redis_client.is_available():
+        return None
+    key = f"anon:prompts:{ip}:{get_now().date()}"
+    count = redis_client.client.incr(key)
+    if count == 1:
+        redis_client.client.expire(key, 86400)
+    return count
 
-    if counter >= 5:
+
+@search_router.post("/prompt")
+def handle_search_prompt(request: Request, payload: SearchPromptRequest):
+    # El límite vive en el servidor (por IP): una cookie la borra cualquiera
+    ip = request.client.host if request.client else "unknown"
+    count = _anon_prompt_count(ip)
+    if count is None:
+        raise HTTPException(status_code=503, detail="Modo de prueba no disponible por ahora.")
+    if count > ANON_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "Has alcanzado el límite de 5 mensajes de prueba.", "login_required": True}
+            detail={"error": f"Has alcanzado el límite de {ANON_LIMIT} mensajes de prueba.", "login_required": True}
         )
 
-    logger.debug(f'print:{counter}')
-    print("BODY RECIBIDO:", payload.dict())
-    
     try:
         result = generate_prompt({"description": payload.prompt})
-
-        if result == "Todos los servicios de IA no estan disponibles actualmente.":
-            raise HTTPException(status_code=503, detail="Error: IA no disponible")
-        
-        # Aumentar contador y guardarlo en la cookie
-        new_counter = counter + 1
-        response.set_cookie(key="anon_prompt_count", value=str(new_counter), httponly=True)
-
         return {
             "result": result,
-            "remaining": max(0, 5 - new_counter)
+            "remaining": max(0, ANON_LIMIT - count)
         }
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Error: IA no disponible")
     except Exception as e:
         logger.exception(f"Error al procesar prompt: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -98,12 +108,18 @@ chat_router = APIRouter()
 
 #--------------- EVENTS QUEUE ---------------
 @chat_router.get("/events")
-async def events():
+def events(
+    token: str = Query(..., description="EventSource no puede mandar headers: el token va en la URL"),
+    app_id: str = Query("jarvis-default"),
+):
+    user_id = str(authenticate(token, app_id)["user_id"])
+    queue = event_queues[user_id]
+
     async def stream():
         while True:
             try:
                 # Usamos run_in_threadpool porque Queue.get() de Python bloquea el hilo
-                event = await run_in_threadpool(event_queue.get, timeout=20)
+                event = await run_in_threadpool(queue.get, timeout=20)
                 yield f"data: {json.dumps(event)}\n\n"
             except Empty:
                 yield f"data: {json.dumps({'type': 'ping'})}\n\n"
@@ -115,7 +131,7 @@ async def events():
 # ----------------- GET ---------------------
 # ---- Obtiene todos los chats ----
 @chat_router.get("")
-async def get_all_chats(
+def get_all_chats(
     db: Session = Depends(get_db), 
     user: dict = Depends(get_current_user)
 ):
@@ -132,7 +148,12 @@ async def get_all_chats(
         
 # ---- Obtiene mensajes recientes de un chat específico ----
 @chat_router.get("/{chat_id}/messages/recent")
-async def get_recent_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+def get_recent_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    owned = db.query(Chat.id).filter(
+        Chat.id == chat_id, Chat.user_id == user["user_id"], Chat.app_id == user["app_id"]
+    ).first()
+    if not owned:
+        raise HTTPException(status_code=404, detail='Chat no encontrado o acceso denegado')
     try:
         messages = ChatCache.get_messages(str(chat_id), db_session=db)
         return messages
@@ -142,7 +163,7 @@ async def get_recent_messages(chat_id: UUID, db: Session = Depends(get_db), user
 
 # ---- Obtiene todos los mensajes de un chat específico ----
 @chat_router.get("/{chat_id}/messages")
-async def get_chat_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+def get_chat_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
     try:
         chat = db.query(Chat).filter(
             Chat.id == chat_id, 
@@ -153,7 +174,9 @@ async def get_chat_messages(chat_id: UUID, db: Session = Depends(get_db), user: 
         if not chat:
             raise HTTPException(status_code=404, detail='Chat no encontrado o acceso denegado')
         
-        stmt = select(Message).where(Message.chat_id == chat_id).order_by(Message.created_at.asc())
+        stmt = (select(Message)
+                .where(Message.chat_id == chat_id, Message.role.in_(LLM_ROLES))
+                .order_by(Message.created_at.asc()))
         messages = db.execute(stmt).scalars().all()
         
         return [{
@@ -162,6 +185,8 @@ async def get_chat_messages(chat_id: UUID, db: Session = Depends(get_db), user: 
             "content": msg.content,
             "created_at": msg.created_at.isoformat()
         } for msg in messages]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Error al obtener mensajes del chat {chat_id}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -170,7 +195,7 @@ async def get_chat_messages(chat_id: UUID, db: Session = Depends(get_db), user: 
 # ----------------- DELETE -------------------
     
 @chat_router.delete("/{chat_id}")
-async def delete_chat(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+def delete_chat(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
     try:
         # 1. BUSCAMOS EL CHAT
         chat = db.query(Chat).filter(
@@ -214,7 +239,7 @@ async def delete_chat(chat_id: UUID, db: Session = Depends(get_db), user: dict =
 # ------------ POST (crear chat) ------------- 
        
 @chat_router.post("", status_code=status.HTTP_201_CREATED)
-async def create_chat(
+def create_chat(
     payload: CreateChatRequest, 
     db: Session = Depends(get_db), 
     user: dict = Depends(get_current_user)
@@ -263,7 +288,7 @@ async def create_chat(
 
 # --------------- POST (enviar mensaje) ---------------
 @chat_router.post("/{chat_id}/message")
-async def send_message(
+def send_message(
     chat_id: UUID, 
     payload: SendMessageRequest, 
     db: Session = Depends(get_db), 
@@ -280,7 +305,7 @@ async def send_message(
         ).first()
 
         if not chat:
-            chat = Chat(id=chat_id, user_id=user["user_id"], app_id=user["app_id"], title="Sin titulo")
+            chat = Chat(id=chat_id, user_id=user["user_id"], app_id=user["app_id"], title="Sin título")
             db.add(chat)
             db.flush() # flush() asigna un ID pero sin hacer commit final todavía
 
@@ -297,11 +322,15 @@ async def send_message(
             db.add(context_msg)
 
         db.commit()
+        ChatCache.append_message(str(chat.id), {
+            "id": user_message.id, "role": "user",
+            "content": user_text, "created_at": get_now().isoformat()
+        })
 
-        # 4. Obtener mensajes recientes
+        # 4. Obtener mensajes recientes (solo roles válidos para el LLM)
         recent = db.query(Message).filter(
             Message.chat_id == chat.id,
-            Message.role != "context",
+            Message.role.in_(LLM_ROLES),
             Message.id != user_message.id
         ).order_by(Message.created_at.desc()).all()[::-1]
 
@@ -325,18 +354,18 @@ async def send_message(
         )
 
         # 7. Autogenerar título si es el primer mensaje
-        if not chat.title or chat.title == "Sin titulo":
+        if chat.title in DEFAULT_TITLES:
             words = user_text.split()
             chat.title = " ".join(words[:10]) + ("..." if len(words) > 10 else "")
             db.commit()
-            SidebarCache.invalidate_user(user["user_id"])
+            SidebarCache.invalidate_user(user["user_id"], user["app_id"])
 
-        # 8. Generador para Streaming (Mantiene su propia DB Session por ser un proceso largo)
-        async def generate():
+        # 8. Generador para Streaming (Mantiene su propia DB Session por ser un proceso largo).
+        # Es síncrono a propósito: FastAPI lo itera en un hilo y el stream del LLM no congela al resto.
+        def generate():
             gen_session = SessionLocal()
             try:
                 full_reply = ""
-                # FastAPI permite iterar asincronamente sin bloquear hilos
                 for chunk in completion_stream(llm_payload):
                     full_reply += chunk
                     yield chunk
@@ -376,15 +405,15 @@ async def send_message(
 # --------------- POST (extraer texto de archivos) ---------------
 # Función normal (fuera de la ruta) para la tarea en 2do plano
 def background_task(file_bytes: bytes, filename_bd: str, content_type: str, user_id: str, text_to_store: str, filename_ui: str):
+    user_events = event_queues[str(user_id)]
     bg_session = SessionLocal() # La tarea de fondo maneja su propia sesión
     try:
-        event_queue.put({"type": "upload_started", "filename": filename_ui, "user_id": str(user_id)})
-        logger.info(f"Background upload started: {filename_ui}")
-
         access_token = get_user_onedrive_token(user_id)
         if not access_token:
-            event_queue.put({"type": "upload_error", "filename": filename_ui, "error": "No OneDrive token", "user_id": str(user_id)})
-            return
+            return  # OneDrive es opcional: sin cuenta vinculada no hay nada que subir
+
+        user_events.put({"type": "upload_started", "filename": filename_ui, "user_id": str(user_id)})
+        logger.info(f"Background upload started: {filename_ui}")
 
         download_url = upload_to_onedrive(access_token, filename_bd, file_bytes)
 
@@ -397,11 +426,11 @@ def background_task(file_bytes: bytes, filename_bd: str, content_type: str, user
         bg_session.add(document)
         bg_session.commit()
 
-        event_queue.put({"type": "upload_completed", "filename": filename_ui, "url": download_url, "user_id": str(user_id)})
+        user_events.put({"type": "upload_completed", "filename": filename_ui, "url": download_url, "user_id": str(user_id)})
     except Exception as e:
         bg_session.rollback()
         logger.exception("Background task error")
-        event_queue.put({"type": "upload_error", "filename": filename_ui, "error": str(e), "user_id": str(user_id)})
+        user_events.put({"type": "upload_error", "filename": filename_ui, "error": str(e), "user_id": str(user_id)})
     finally:
         bg_session.close()
 
@@ -420,17 +449,18 @@ async def extract_file(
     timestamp = get_now().strftime("%Y%m%d_%H%M%S")
     filename = secure_filename(f"{original_name_base}_{timestamp}{ext}")
 
-    content_type = file.content_type
-    file_bytes = await file.read() # Asincrónico y eficiente
-    final_text = ""
+    content_type = file.content_type or ""
+    file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="El archivo supera los 10 MB")
 
     try:
         if content_type.startswith("image/"):
-            final_text = analyze_image_with_azure(file_bytes)
+            final_text = await run_in_threadpool(analyze_image_with_azure, file_bytes, user_id=user["user_id"])
             logger.info(f"Text extracted from image {original_filename}")
             resp_text = f"Image '{original_filename}':\n\n{final_text}"
         else:
-            # Aquí pondrías tu lógica para PDF, Word, etc.
+            final_text = await run_in_threadpool(extract_text_from_file, BytesIO(file_bytes), original_filename)
             resp_text = f"File content '{original_filename}':\n\n{final_text}"
 
         # Mandar la tarea a segundo plano. FastAPI se encarga de ejecutarla
@@ -451,14 +481,16 @@ async def extract_file(
 
 # --------------- PUT ---------------
 @chat_router.put("/{chat_id}/title")
-async def update_chat_title(
+def update_chat_title(
     chat_id: UUID, 
     payload: UpdateTitleRequest, 
     db: Session = Depends(get_db), 
     user: dict = Depends(get_current_user)
 ):
     try:
-        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user["user_id"]).first()
+        chat = db.query(Chat).filter(
+            Chat.id == chat_id, Chat.user_id == user["user_id"], Chat.app_id == user["app_id"]
+        ).first()
         
         if not chat:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado")

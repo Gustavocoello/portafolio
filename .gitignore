@@ -84,3 +84,4 @@ openspec/
 
 # Ignorar archivos compilados de Python
 *.pyc
+espacio_trabajo/

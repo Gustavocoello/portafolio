@@ -1,7 +1,6 @@
 # src/services/auth/google/google_oauth.py
 import os
 import json
-from datetime import timedelta
 from urllib.parse import urlparse, parse_qs
 from uuid import uuid4
 from dotenv import load_dotenv
@@ -120,11 +119,8 @@ def handle_google_callback(authorization_response_url: str):
         access_token = encrypt_token(credentials.token)
         refresh_token = encrypt_token(credentials.refresh_token) if credentials.refresh_token else None
 
-        expires_at = (
-            get_now() + timedelta(seconds=credentials.expiry.timestamp())
-            if credentials.expiry
-            else None
-        )
+        # credentials.expiry ya es la fecha absoluta (UTC) en que vence el token
+        expires_at = credentials.expiry
 
         # 7. Guardar/actualizar token en la BD
         token = db_session.query(UserToken).filter(

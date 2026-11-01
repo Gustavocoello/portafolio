@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 # Rutas v1
 from src.api.v1.chat.routes import search_router, chat_router
 from src.api.v1.auth.google_routes import google_auth_router
-from src.api.v1.auth.github_routes import github_auth_router
 from src.api.v1.auth.onedrive_routes import onedrive_router
 from src.api.v1.auth.user_routes import user_router, integrations_router
 
@@ -30,8 +29,8 @@ load_dotenv()
 PORT = os.getenv("PORT", 5000)
 HOST = os.getenv("HOST", "0.0.0.0")
 SECRET_KEY = os.getenv("SECRET_KEY")
-ENV = os.getenv("ENV").lower()
-SYNC_ON_START = os.getenv("SYNC_ON_START").lower() == "true"
+ENV = os.getenv("ENV", "").lower()
+SYNC_ON_START = os.getenv("SYNC_ON_START", "").lower() == "true"
 
 # Configurar logging
 logger = get_logger('app')
@@ -94,10 +93,9 @@ app.add_middleware(
 app.include_router(search_router, prefix='/api/v1/search')
 app.include_router(chat_router, prefix='/api/v1/chat')
 app.include_router(google_auth_router)
-app.include_router(github_auth_router)
 app.include_router(user_router)
-app.include_router(onedrive_router, prefix='/api/v1/onedrive')
-app.include_router(integrations_router, prefix="/api/v1/integrations")
+app.include_router(onedrive_router)  # prefijo propio: /api/onedrive
+app.include_router(integrations_router)  # prefijo propio: /api/v1/integrations
 
 # Rutas v2
 app.include_router(ping_router, prefix="/v2")

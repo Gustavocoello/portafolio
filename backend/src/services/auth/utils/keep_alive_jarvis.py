@@ -15,7 +15,7 @@ from src.database.models.models import PingLog
 
 load_dotenv()
 
-RENDER_SERVER = os.getenv("RENDER_SERVER").lower() == "true"
+RENDER_SERVER = os.getenv("RENDER_SERVER", "").lower() == "true"
 
 LOCAL_URL = os.getenv("LOCAL_PING") # Contabilidad 
 DEPLOY_URL = os.getenv("PRODU_PING")

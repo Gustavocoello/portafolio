@@ -50,4 +50,4 @@ EXPOSE 9222
 
 # Levanta Chrome Headless en background y luego inicia FastAPI con Uvicorn
 # Las flags --no-sandbox y --disable-dev-shm-usage son OBLIGATORIAS en Docker
-CMD ["bash", "-c", "google-chrome-stable --headless --disable-gpu --no-sandbox --disable-dev-shm-usage --remote-debugging-port=9222 & uvicorn main:app --host 0.0.0.0 --port $PORT"]
+CMD ["bash", "-c", "google-chrome-stable --headless --disable-gpu --no-sandbox --disable-dev-shm-usage --remote-debugging-port=9222 & uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'"]

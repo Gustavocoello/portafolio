@@ -28,7 +28,7 @@ class PingLogRequest(BaseModel):
 # 1. PING LOGS (Monitoreo de latencias)
 # ==========================================
 @ping_logs_router.post("/ping_log", status_code=status.HTTP_201_CREATED)
-async def receive_ping_log(
+def receive_ping_log(
     request: Request,
     payload: PingLogRequest,
     db: Session = Depends(get_db)
@@ -99,7 +99,7 @@ async def receive_ping_log(
 # 2. PING SIMPLE (Verificador de estado del Server)
 # ==========================================
 @ping_router.get("/ping")
-async def ping(
+def ping(
     request: Request,
     # Inyectamos el User-Agent automáticamente, con "unknown" como fallback
     user_agent: Optional[str] = Header(default="unknown", alias="User-Agent")
@@ -121,7 +121,7 @@ async def ping(
 # 3. HEALTH CHECKS Y POOL STATS (BD)
 # ==========================================
 @health_router.get("/db-health")
-async def db_health_check_route():
+def db_health_check_route():
     """
     Health Check que utiliza la función auxiliar para despertar Azure.
     """
@@ -151,7 +151,7 @@ async def db_health_check_route():
         )
 
 @health_router.get('/pool-stats')
-async def pool_stats_endpoint():
+def pool_stats_endpoint():
     """
     Endpoint para monitorear el pool de conexiones y evitar fugas de RAM.
     """

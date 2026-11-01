@@ -69,9 +69,11 @@ def get_current_user(
     Dependencia que valida el token y retorna los datos del usuario.
     Reemplaza a @auth_required y al objeto 'g' de Flask.
     """
-    token = credentials.credentials
-    app_id = x_project_origin
-    
+    return authenticate(credentials.credentials, x_project_origin)
+
+
+def authenticate(token: str, app_id: str) -> dict:
+    """Valida un token de cualquier proveedor y retorna los datos del usuario."""
     payload = None
     provider = None
 
@@ -99,8 +101,7 @@ def get_current_user(
         # CASO B: Developing (AWS)
         elif app_id in AWS_APP_IDS:
             provider = AuthProvider.AWS
-            # Lógica de AWS...
-            pass
+            raise Exception("Autenticación AWS aún no implementada.")
         
         # CASO C: MANUAL 
         else:
@@ -127,8 +128,6 @@ def get_current_user(
             provider=provider,
             extra_data=payload
         )
-
-        print(f"[AUTH SUCCESS] User: {user_obj.email} | App: {app_id} | Provider: {provider}")
 
         # EN LUGAR DE "g.user_id = user_obj.id", RETORNAMOS UN DICCIONARIO
         return {

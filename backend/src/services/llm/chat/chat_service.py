@@ -3,8 +3,7 @@ import json
 # CHAT V1
 from sqlalchemy import select, delete
 from src.services.auth.mcp.mcp_jwt import generate_mcp_jwt
-from src.database.models.models import Message, UserToken
-from src.services.auth.utils.token_crypto import encrypt_token
+from src.database.models.models import Message
 from src.services.llm.prompts.system_prompt import SYSTEM_PROMPT
 from src.services.llm.chat.llm_router import completion
 from src.core.time_helper import get_now
@@ -76,7 +75,7 @@ def build_payload(chat, recent, user_text, memory_context=None, hidden_context=N
 
 def execute_mcp_tool(tool_name, params, user_id, db_session, chat_id, mcp_manager):
     """
-    Runs an MCP tool, handles token refresh, persists result.
+    Runs an MCP tool and persists its result.
     Returns mcp_context string or None on failure.
     """
     try:
@@ -99,23 +98,12 @@ def execute_mcp_tool(tool_name, params, user_id, db_session, chat_id, mcp_manage
         finally:
             loop.close()
 
-        logger.info(f"MCP result for tool '{tool_name}': {result}")
-
-        # Handle token refresh
-        response_context = getattr(result, "context", {})
-        if "google_new_access_token" in response_context:
-            _persist_refreshed_token(
-                user_id=user_id,
-                new_access=response_context["google_new_access_token"],
-                new_refresh=response_context.get("google_new_refresh_token"),
-                db_session=db_session
-            )
+        logger.debug(f"MCP result for tool '{tool_name}': {result}")
 
         result_dict = safe_serialize_call_result(result)
         mcp_context = json.dumps({
             "response": result_dict,
             "tool_used": tool_name,
-            "token_refreshed": "google_new_access_token" in response_context
         })
 
         mcp_msg = Message(chat_id=chat_id, role="mcp-tool", content=mcp_context)
@@ -130,9 +118,13 @@ def execute_mcp_tool(tool_name, params, user_id, db_session, chat_id, mcp_manage
     
 MAX_RAW   = 10
 MAX_TOTAL = 40
-    
+# Únicos roles que aceptan las APIs tipo OpenAI; 'context' y 'mcp-tool' son internos
+LLM_ROLES = ("user", "assistant")
+
 def summarize_and_trim(chat, db_session):
-    stmt = select(Message).filter_by(chat_id=chat.id).order_by(Message.created_at.asc())
+    stmt = (select(Message)
+            .where(Message.chat_id == chat.id, Message.role.in_(LLM_ROLES))
+            .order_by(Message.created_at.asc()))
     all_msgs = db_session.execute(stmt).scalars().all()
 
     if len(all_msgs) <= MAX_TOTAL:
@@ -142,13 +134,16 @@ def summarize_and_trim(chat, db_session):
 
     summary_prompt = [
         {"role": "system", "content": "Summarize the following conversation briefly and accurately. Preserve key facts, names, decisions, and context."},
-        *[{"role": m.role, "content": m.content} for m in to_summarize]
     ]
+    # El resumen anterior entra al prompt para que el nuevo lo reemplace en vez de crecer sin límite
+    if chat.summary:
+        summary_prompt.append({"role": "system", "content": f"Summary of the conversation before these messages:\n{chat.summary}"})
+    summary_prompt += [{"role": m.role, "content": m.content} for m in to_summarize]
 
     new_summary = completion(summary_prompt)
     logger.info(f"New summary generated for chat {chat.id}")
 
-    chat.summary = ((chat.summary or "") + "\n" + new_summary).strip()
+    chat.summary = new_summary
 
     if hasattr(chat, "updated_at"):
         chat.updated_at = get_now()
@@ -165,31 +160,6 @@ def summarize_and_trim(chat, db_session):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-def _persist_refreshed_token(user_id, new_access, new_refresh, db_session):
-    token_entry = db_session.query(UserToken).filter(
-        UserToken.user_id == user_id,
-        UserToken.provider == "google_calendar"
-    ).first()
-
-    if token_entry:
-        token_entry.access_token = encrypt_token(new_access)
-        if new_refresh:
-            token_entry.refresh_token = encrypt_token(new_refresh)
-        db_session.add(token_entry)
-        logger.info("Google token refreshed and persisted.")
-    else:
-        new_token = UserToken(
-            user_id=user_id,
-            provider="google_calendar",
-            access_token=encrypt_token(new_access),
-            refresh_token=encrypt_token(new_refresh) if new_refresh else None
-        )
-        db_session.add(new_token)
-        logger.info("Google token created and persisted.")
-
-    db_session.commit()
-
 
 def safe_serialize_call_result(result):
     """Safely converts MCP result to a serializable dict."""

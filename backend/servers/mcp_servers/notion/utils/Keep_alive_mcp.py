@@ -15,7 +15,7 @@ from .time_helper import get_now
 
 load_dotenv()
 
-RENDER_SERVER = os.getenv("RENDER_SERVER").lower() == "true"
+RENDER_SERVER = os.getenv("RENDER_SERVER", "").lower() == "true"
 
 LOCAL_URL = os.getenv("LOCAL_PING") # Backend de contabilidad local
 DEPLOY_URL = os.getenv("PRODU_PING") # Backend de contabilidad deployado
