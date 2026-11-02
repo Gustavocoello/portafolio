@@ -42,7 +42,7 @@ def test_solo_el_dueno(monkeypatch):
 
 
 def test_nombre_de_tars():
-    from src.services.agent.jarvis.wake import quitar_nombre as _quitar_nombre
+    from src.services.agent.jarvis.voz import quitar_nombre as _quitar_nombre
     assert _quitar_nombre("TARS, ¿qué tengo hoy en el calendario?") == "¿qué tengo hoy en el calendario?"
     assert _quitar_nombre("¡Oye, Tars! Léeme los correos.") == "Léeme los correos."
     assert _quitar_nombre("Hey Tarz qué hora es") == "qué hora es"

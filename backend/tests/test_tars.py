@@ -1,0 +1,25 @@
+# Correr desde backend/:  python -m pytest tests
+from datetime import datetime
+
+from src.core.time_helper import TIMEZONE
+from src.services.agent.jarvis.notices import eventos_por_empezar
+from src.services.agent.jarvis.voz import frases
+
+AGENDA = """Resumen de eventos para hoy (02/11/2026) - Hora Ecuador (GMT-5):
+
+[Trabajo]:
+• 02/11/2026 de 09:30 a 10:00: Reunión con Ana en Oficina
+• 02/11/2026 de 15:00 a 16:00: Renovación póliza Pérez"""
+
+
+def test_eventos_por_empezar():
+    a_las = lambda h, m: TIMEZONE.localize(datetime(2026, 11, 2, h, m))
+    assert eventos_por_empezar(AGENDA, a_las(9, 22)) == [("09:30", "Reunión con Ana en Oficina")]
+    assert eventos_por_empezar(AGENDA, a_las(9, 10)) == []   # falta más de 10 minutos
+    assert eventos_por_empezar(AGENDA, a_las(9, 31)) == []   # ya empezó
+    assert eventos_por_empezar("[Trabajo] Sin eventos.", a_las(9, 22)) == []
+
+
+def test_frases():
+    assert frases("Tienes dos correos. Uno es de Ana… ¿Lo leo? Sí.") == ["Tienes dos correos.", "Uno es de Ana…", "¿Lo leo?", "Sí."]
+    assert frases("  ") == []

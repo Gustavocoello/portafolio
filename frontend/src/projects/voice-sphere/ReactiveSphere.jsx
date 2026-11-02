@@ -21,21 +21,27 @@ import { CiMicrophoneOff, CiMicrophoneOn } from "react-icons/ci";
 import "./ReactiveSphere.css";
 
 /* ==================== AUDIO HOOK ==================== */
-// shortcut: umbral fijo de voz calibrado a ojo; si corta frases o graba ruido, ajustarlo o pasar a un VAD de verdad
+// shortcut: umbrales de volumen calibrados a ojo; si corta frases, graba ruido o se interrumpe solo, ajustarlos
 const VOICE_THRESHOLD = 0.12;
-const SILENCE_MS = 900;     // silencio que cierra una frase
-const MIN_PHRASE_MS = 400;  // más corto que esto es un ruido, no una frase
-const FOLLOW_UP_MS = 8000;  // tras hablar con TARS, la siguiente frase no necesita su nombre (como Alexa)
+const BARGE_IN_THRESHOLD = 0.3; // sin reconocimiento de voz: hablar fuerte 0,4 s interrumpe a TARS
+const BARGE_IN_MS = 400;
+const SILENCE_MS = 900;      // silencio que cierra una frase
+const MIN_PHRASE_MS = 400;   // más corto que esto es un ruido, no una frase
+const FOLLOW_UP_MS = 8000;   // tras hablar con TARS, la siguiente frase no necesita su nombre (como Alexa)
+const NAME_GRACE_MS = 600;   // el reconocimiento del navegador llega un poco después de que termina la frase
+const NOTICES_EVERY_MS = 60000;
+const WAKE_WORD = /\b(tars|tarz|thars|tares|tarts)\b/i;
+const STOP_WORD = /\b(tars|tarz|basta|silencio|detente|c[aá]llate|stop)\b/i;
 
 function audioLevel(analyser, buffer) {
   analyser.getByteFrequencyData(buffer);
   return Math.min(1, buffer.reduce((a, b) => a + b, 0) / buffer.length / 200);
 }
 
-function chime(ctx) {
+function chime(ctx, frequency = 880) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.frequency.value = 880;
+  osc.frequency.value = frequency;
   gain.gain.setValueAtTime(0.0001, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
@@ -44,9 +50,51 @@ function chime(ctx) {
   osc.stop(ctx.currentTime + 0.3);
 }
 
+function base64ToBuffer(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
 /**
- * Micrófono siempre abierto mientras active. Con tars ({ hear, reply }) cada frase va a hear():
- * solo cuenta si empieza con "TARS", salvo con la barra espaciadora presionada o justo después de una respuesta.
+ * Reconocimiento de voz del navegador, solo para oír "TARS" sin mandar cada frase a Groq.
+ * En el propio equipo si Chrome lo permite (processLocally); si no, el de Google. null si el navegador no tiene.
+ */
+async function startNameListener(onText, isStopped) {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) return null;
+  const rec = new Recognition();
+  rec.lang = "es-ES";
+  rec.continuous = true;
+  rec.interimResults = true;
+  let local = false;
+  try {
+    const options = { langs: ["es-ES"], processLocally: true };
+    const status = await Recognition.available?.(options);
+    if (status === "downloadable" || status === "downloading") await Recognition.install(options);
+    if (status && status !== "unavailable") local = rec.processLocally = true;
+  } catch (err) {
+    console.info("TARS: reconocimiento local no disponible, uso el del navegador", err);
+  }
+  let dead = false;
+  rec.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) onText(e.results[i][0].transcript);
+  };
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "language-not-supported") dead = true;
+  };
+  rec.onend = () => { if (!dead && !isStopped()) setTimeout(() => { try { rec.start(); } catch { /* ya iniciado */ } }, 250); };
+  rec.start();
+  console.info(`TARS: escucho su nombre ${local ? "en este equipo" : "con el reconocimiento del navegador"}`);
+  return { stop: () => { dead = true; rec.abort(); }, isAlive: () => !dead };
+}
+
+/**
+ * Micrófono siempre abierto mientras active. Con tars ({ hear, reply, say, notices }):
+ * - Solo atiende frases con su nombre, salvo con la barra espaciadora o justo después de que habló.
+ * - Habla frase a frase según llegan, y se calla si lo interrumpes (barra, "TARS", "basta"...).
+ * - Cada minuto pregunta si tiene algo que avisar (correos urgentes, agenda).
  */
 function useVoice(active, tars) {
   const [userLevel, setUserLevel] = useState(0);
@@ -59,17 +107,28 @@ function useVoice(active, tars) {
   useEffect(() => {
     if (!active) return;
     let stopped = false;
-    let raf, stream, ctx, followTimer;
+    let raf, stream, ctx, followTimer, noticesTimer, nameListener, wakeLock;
     let recorder = null;
-    let busy = false; // mientras TARS escucha, piensa o habla no se graba (no escucharse a sí mismo)
-    let ptt = false;  // barra espaciadora presionada
-    let followUntil = 0, startedAt = 0, lastVoice = 0;
+    let busy = false;       // TARS escucha, piensa o habla: no se graba (no escucharse a sí mismo)
+    let speaking = false;
+    let ptt = false;        // barra espaciadora presionada
+    let followUntil = 0, startedAt = 0, lastVoice = 0, heardNameAt = -Infinity, loudSince = 0;
+    let current = null;     // { controller, source } de la respuesta que está sonando
+    const cleanups = [];
 
     const idlePhase = () => setPhase(performance.now() < followUntil ? "listening" : "sleeping");
     const openFollowUp = () => {
       followUntil = performance.now() + FOLLOW_UP_MS;
       clearTimeout(followTimer);
       followTimer = setTimeout(() => { if (!busy && !recorder && !stopped) idlePhase(); }, FOLLOW_UP_MS + 50);
+    };
+
+    const interrupt = () => {
+      if (!current) return;
+      current.controller.abort();
+      try { current.source?.stop(); } catch { /* ya terminó */ }
+      current = null;
+      if (ctx) chime(ctx); // ya te escucha: lo siguiente no necesita su nombre
     };
 
     async function start() {
@@ -97,51 +156,110 @@ function useVoice(active, tars) {
       const resume = () => ctx.state === "suspended" && ctx.resume().then(() => !stopped && idlePhase());
       window.addEventListener("pointerdown", resume);
       window.addEventListener("keydown", resume);
+      cleanups.push(() => {
+        window.removeEventListener("pointerdown", resume);
+        window.removeEventListener("keydown", resume);
+      });
 
-      const play = async (audio) => {
+      // Pantalla siempre encendida mientras TARS escucha (modo estación, como un Alexa)
+      const keepAwake = async () => {
+        try { if (document.visibilityState === "visible") wakeLock = await navigator.wakeLock?.request("screen"); } catch { /* sin permiso */ }
+      };
+      keepAwake();
+      document.addEventListener("visibilitychange", keepAwake);
+      cleanups.push(() => document.removeEventListener("visibilitychange", keepAwake));
+
+      if (tarsRef.current) {
+        nameListener = await startNameListener((text) => {
+          if (WAKE_WORD.test(text)) heardNameAt = performance.now();
+          if (current && STOP_WORD.test(text)) interrupt(); // también mientras piensa
+        }, () => stopped);
+      }
+      const listensLocally = () => nameListener?.isAlive();
+
+      const play = (audioBuffer, controller) => new Promise((resolve) => {
+        if (controller.signal.aborted) return resolve();
         const source = ctx.createBufferSource();
-        source.buffer = await ctx.decodeAudioData(await audio.arrayBuffer());
+        source.buffer = audioBuffer;
         source.connect(voice);
-        await new Promise((resolve) => { source.onended = resolve; source.start(); });
+        source.onended = resolve;
+        current = { controller, source };
+        speaking = true;
+        setPhase("speaking");
+        source.start();
+      });
+
+      // Habla y, al terminar, deja 8 s para responderle sin decir su nombre
+      const talk = async (produce) => {
+        busy = true;
+        const controller = new AbortController();
+        current = { controller, source: null };
+        try {
+          await produce(controller);
+        } catch (err) {
+          if (err.name !== "AbortError") {
+            console.warn("TARS:", err);
+            chime(ctx, 330); // tono grave: algo falló
+          }
+        } finally {
+          speaking = false;
+          if (current?.controller === controller) current = null;
+          busy = false;
+          if (!stopped) {
+            openFollowUp();
+            idlePhase();
+          }
+        }
       };
 
+      const reply = (text) => talk(async (controller) => {
+        setPhase("thinking");
+        let queue = Promise.resolve();
+        for await (const event of tarsRef.current.reply(text, controller.signal)) {
+          if (event.type === "error") throw new Error(event.detail);
+          if (event.type !== "audio") continue;
+          const decoded = ctx.decodeAudioData(base64ToBuffer(event.mp3)); // decodifica mientras suena la anterior
+          queue = queue.then(async () => play(await decoded, controller));
+        }
+        await queue;
+      });
+
       const handle = async (blob, wake) => {
+        busy = true;
         try {
           const heard = await tarsRef.current.hear(blob, wake);
           if (stopped || !heard.awake) return;
           chime(ctx);
-          if (heard.text) {
-            setPhase("thinking");
-            const audio = await tarsRef.current.reply(heard.text);
-            if (stopped) return;
-            setPhase("speaking");
-            await play(audio);
-          }
-          openFollowUp();
+          if (heard.text) return await reply(heard.text);
+          openFollowUp(); // solo dijo "TARS": escucha la siguiente frase
         } catch (err) {
           console.warn("TARS:", err);
         } finally {
-          busy = false;
-          if (!stopped) idlePhase();
+          if (!speaking && !current) {
+            busy = false;
+            if (!stopped) idlePhase();
+          }
         }
       };
 
       const startRecording = (now) => {
         const parts = [];
-        const wake = !ptt && now >= followUntil;
+        const needsName = !ptt && now >= followUntil;
         recorder = new MediaRecorder(stream);
         recorder.ondataavailable = (e) => parts.push(e.data);
         recorder.onstop = function () {
-          if (stopped || this.phraseMs < MIN_PHRASE_MS) {
-            busy = false;
-            if (!stopped) idlePhase();
-            return;
-          }
-          handle(new Blob(parts, { type: this.mimeType }), wake);
+          const done = () => { busy = false; if (!stopped) idlePhase(); };
+          if (stopped || this.phraseMs < MIN_PHRASE_MS) return done();
+          const blob = new Blob(parts, { type: this.mimeType });
+          if (!needsName) return handle(blob, false);
+          if (!listensLocally()) return handle(blob, true); // sin reconocimiento en el navegador: Whisper busca el nombre
+          // Solo se manda a Groq si el navegador oyó "TARS" en esta frase
+          const phraseStart = startedAt;
+          setTimeout(() => (heardNameAt >= phraseStart - 1500 ? handle(blob, false) : done()), NAME_GRACE_MS);
         };
         recorder.start();
         startedAt = now;
-        if (!wake) setPhase("listening");
+        if (!needsName) setPhase("listening");
       };
       const stopRecording = (phraseMs) => {
         busy = true;
@@ -151,9 +269,12 @@ function useVoice(active, tars) {
       };
 
       const onKeyDown = (e) => {
-        if (e.code !== "Space" || e.repeat || busy || !tarsRef.current || e.target.closest?.("input, textarea")) return;
+        if (e.code !== "Space" || e.repeat || !tarsRef.current || e.target.closest?.("input, textarea")) return;
         e.preventDefault();
+        if (speaking || current) interrupt(); // la barra también lo calla
+        else if (busy) return;
         if (recorder) { recorder.onstop = null; recorder.stop(); recorder = null; } // descarta lo que grababa sola
+        busy = false;
         ptt = true;
         startRecording(performance.now());
       };
@@ -164,14 +285,46 @@ function useVoice(active, tars) {
       };
       window.addEventListener("keydown", onKeyDown);
       window.addEventListener("keyup", onKeyUp);
+      cleanups.push(() => {
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+      });
+
+      // Avisos por iniciativa propia: solo si está libre (no interrumpe una conversación)
+      const checkNotices = async () => {
+        if (stopped || busy || recorder || ptt || !tarsRef.current || ctx.state !== "running") return;
+        try {
+          const notices = await tarsRef.current.notices();
+          if (!notices.length || busy || recorder) return;
+          await talk(async (controller) => {
+            chime(ctx, 660);
+            for (const text of notices) {
+              const audio = await ctx.decodeAudioData(await tarsRef.current.say(text));
+              await play(audio, controller);
+              if (controller.signal.aborted) break;
+            }
+          });
+        } catch (err) {
+          console.warn("TARS avisos:", err);
+        }
+      };
+      noticesTimer = setInterval(checkNotices, NOTICES_EVERY_MS);
+      setTimeout(checkNotices, 3000);
 
       const tick = () => {
         if (stopped) return;
         const level = audioLevel(mic, buffer);
-        setUserLevel((prev) => prev * 0.82 + (busy ? 0 : level) * 0.18);
+        setUserLevel((prev) => prev * 0.82 + (busy && !speaking ? 0 : level) * 0.18);
         setTarsLevel((prev) => prev * 0.82 + audioLevel(voice, buffer) * 0.18);
 
         const now = performance.now();
+        // Sin reconocimiento del navegador, interrumpir es hablarle fuerte un momento
+        if (speaking && !listensLocally()) {
+          if (level > BARGE_IN_THRESHOLD) {
+            loudSince ||= now;
+            if (now - loudSince > BARGE_IN_MS) interrupt();
+          } else loudSince = 0;
+        }
         if (tarsRef.current && !busy && !ptt) {
           if (level > VOICE_THRESHOLD) {
             lastVoice = now;
@@ -183,21 +336,18 @@ function useVoice(active, tars) {
         raf = requestAnimationFrame(tick);
       };
       tick();
-
-      cleanups.push(() => {
-        window.removeEventListener("pointerdown", resume);
-        window.removeEventListener("keydown", resume);
-        window.removeEventListener("keydown", onKeyDown);
-        window.removeEventListener("keyup", onKeyUp);
-      });
     }
 
-    const cleanups = [];
     start();
     return () => {
       stopped = true;
       cancelAnimationFrame(raf);
       clearTimeout(followTimer);
+      clearInterval(noticesTimer);
+      current?.controller.abort();
+      try { current?.source?.stop(); } catch { /* ya terminó */ }
+      nameListener?.stop();
+      wakeLock?.release().catch(() => {});
       cleanups.forEach((fn) => fn());
       if (recorder?.state === "recording") recorder.stop();
       stream?.getTracks().forEach((t) => t.stop()); // apaga el micrófono del todo

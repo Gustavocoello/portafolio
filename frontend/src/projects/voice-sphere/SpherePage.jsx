@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import ReactiveSphere from "@/projects/voice-sphere/ReactiveSphere";
 import TarsContactModal from "@/projects/voice-sphere/TarsContactModal";
 import { useAuthContext } from "@/core/auth/AuthContext";
-import { hearTars, isTarsOwner, replyTars } from "@/projects/voice-sphere/tarsApi";
+import { hearTars, isTarsOwner, replyTars, sayTars, tarsNotices } from "@/projects/voice-sphere/tarsApi";
 
 export default function SpherePage() {
   const { getToken } = useAuthContext();
@@ -16,7 +16,9 @@ export default function SpherePage() {
 
   const tars = useMemo(() => ({
     hear: (blob, wake) => hearTars(blob, wake, getToken),
-    reply: (text) => replyTars(text, getToken),
+    reply: (text, signal) => replyTars(text, getToken, signal),
+    say: (text) => sayTars(text, getToken),
+    notices: () => tarsNotices(getToken),
   }), [getToken]);
 
   return (

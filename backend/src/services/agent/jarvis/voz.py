@@ -1,4 +1,4 @@
-"""Palabra de activación de TARS: solo responde a frases que empiezan con su nombre (como Alexa)."""
+"""Texto de la voz de TARS: su nombre como palabra de activación (como Alexa) y frases para hablar por partes."""
 import re
 import unicodedata
 
@@ -19,3 +19,8 @@ def quitar_nombre(texto: str) -> str | None:
             return texto[i:].strip()
         contados += len(unicodedata.normalize("NFKD", letra).encode("ascii", "ignore").decode())
     return ""
+
+
+def frases(texto: str) -> list[str]:
+    """Parte la respuesta en frases para que la primera suene mientras se generan las demás."""
+    return [p for p in re.split(r"(?<=[.!?…])\s+", texto.strip()) if p.strip()]

@@ -28,15 +28,47 @@ export async function hearTars(blob, wake, getToken) {
   return res.json();
 }
 
-/** Respuesta de TARS en mp3. */
-export async function replyTars(text, getToken) {
+/** Respuesta de TARS frase a frase: genera eventos { type: "audio", text, mp3 (base64) } | { type: "error" } | { type: "done" }. */
+export async function* replyTars(text, getToken, signal) {
   const res = await fetch(`${BASE_URL}/api/v2/tars/reply`, {
     method: "POST",
     headers: { ...(await authHeaders(getToken)), "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
+    signal,
   });
-  if (!res.ok) throw new Error(`TARS no respondió (${res.status})`);
-  return res.blob();
+  if (!res.ok || !res.body) throw new Error(`TARS no respondió (${res.status})`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    let end;
+    while ((end = pending.indexOf("\n")) >= 0) {
+      const line = pending.slice(0, end).trim();
+      pending = pending.slice(end + 1);
+      if (line) yield JSON.parse(line);
+    }
+  }
+}
+
+/** Voz de TARS para un texto ya armado (avisos), en mp3. */
+export async function sayTars(text, getToken) {
+  const res = await fetch(`${BASE_URL}/api/v2/tars/say`, {
+    method: "POST",
+    headers: { ...(await authHeaders(getToken)), "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`TARS no pudo hablar (${res.status})`);
+  return res.arrayBuffer();
+}
+
+/** Lo que TARS quiere decir por iniciativa propia (correos urgentes, agenda, saludo). */
+export async function tarsNotices(getToken) {
+  const res = await fetch(`${BASE_URL}/api/v2/tars/notices`, { headers: await authHeaders(getToken) });
+  if (!res.ok) throw new Error(`Sin avisos (${res.status})`);
+  return (await res.json()).notices;
 }
 
 export async function sendContact(data) {

@@ -59,6 +59,23 @@ def correos_pendientes(limite: int = 10) -> str:
         imap.logout()
 
 
+def sin_leer(limite: int = 20) -> list[dict]:
+    """Correos sin leer más recientes como datos: uid, remitente, asunto y el inicio del texto."""
+    imap = _conectar()
+    try:
+        _, data = imap.uid("search", None, "UNSEEN")
+        correos = []
+        for uid in data[0].split()[-limite:][::-1]:
+            _, partes = imap.uid("fetch", uid, "(BODY.PEEK[])")
+            if not partes or partes[0] is None:
+                continue
+            msg = email.message_from_bytes(partes[0][1])
+            correos.append({"uid": uid.decode(), "de": _h(msg["From"]), "asunto": _h(msg["Subject"]), "texto": _texto(msg)[:500]})
+        return correos
+    finally:
+        imap.logout()
+
+
 def leer_correo(uid: str) -> str:
     """Devuelve remitente, asunto y texto de un correo por su id."""
     imap = _conectar()
