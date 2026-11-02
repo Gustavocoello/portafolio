@@ -68,14 +68,14 @@ def callback(request: Request):
         )
         
         # Redirige al frontend exitosamente usando RedirectResponse nativo de FastAPI
-        return RedirectResponse(url=f"{FRONTEND_URL}/c/{user_id_from_redis}/settings")
+        return RedirectResponse(url=f"{FRONTEND_URL}/chat/{user_id_from_redis}/settings")
         
     except Exception as e:
         logger.error(f"Google OAuth Callback Error: {str(e)}")
         
         # Si ocurre un error, construimos la URL de fallback hacia el frontend
         if user_id_from_redis:
-            error_url = f"{FRONTEND_URL}/c/{user_id_from_redis}/settings?error=oauth_failed&details={quote(str(e))}"
+            error_url = f"{FRONTEND_URL}/chat/{user_id_from_redis}/settings?error=oauth_failed&details={quote(str(e))}"
         else:
             error_url = f"{FRONTEND_URL}/auth/error?error=oauth_failed&details={quote(str(e))}"
         

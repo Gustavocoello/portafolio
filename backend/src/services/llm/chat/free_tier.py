@@ -3,6 +3,7 @@ from typing import Optional
 
 from src.services.cache.redis_client import redis_client
 from src.services.llm.chat.llm_router import completion
+from src.services.llm.prompts.system_prompt import SYSTEM_PROMPT
 
 VISITOR_LIMIT = 10  # mensajes por visitante (IP o cuenta), en total
 VISITOR_TTL = 30 * 86400  # shortcut: el conteo se reinicia a los 30 días; quitar el expire si debe ser para siempre
@@ -10,7 +11,16 @@ VISITOR_TTL = 30 * 86400  # shortcut: el conteo se reinicia a los 30 días; quit
 
 def generate_prompt(prompt_data):
     """Respuesta de una sola vuelta (sin memoria ni herramientas) para visitantes."""
-    return completion([{"role": "user", "content": prompt_data.get("description", "")}])
+    return completion([
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": prompt_data.get("description", "")},
+    ])
+
+
+def visitor_ip(request) -> str:
+    """IP real del visitante. Detrás del túnel, request.client es cloudflared y todos compartirían el mismo tope."""
+    # shortcut: se confía en CF-Connecting-IP porque el backend solo escucha en 127.0.0.1 y el túnel
+    return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "unknown")
 
 
 def visitor_message_count(visitor: str) -> Optional[int]:

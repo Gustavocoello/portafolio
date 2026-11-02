@@ -11,6 +11,7 @@ from src.core.logging import get_logger
 from src.database.models.models import ContactRequest
 from src.database.settings.connection import get_db
 from src.services.cache.redis_client import redis_client
+from src.services.llm.chat.free_tier import visitor_ip
 
 logger = get_logger("contact")
 
@@ -49,7 +50,7 @@ def _avisar(pedido: dict) -> None:
 def contact(payload: ContactIn, request: Request, background: BackgroundTasks, db: Session = Depends(get_db)):
     if not redis_client.is_available():
         raise HTTPException(status_code=503, detail="El formulario no está disponible por ahora.")
-    ip = request.client.host if request.client else "unknown"
+    ip = visitor_ip(request)
     key = f"contact:{ip}"
     count = redis_client.client.incr(key)
     if count == 1:

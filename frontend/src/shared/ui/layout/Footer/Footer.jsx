@@ -16,10 +16,10 @@ const Footer = () => {
           <div className="footer-logo-container">
             <img
               src="/icons/galaxy-transparent.png"
-              alt="AI Assistant Logo"
+              alt="Portafolio"
               className="footer-logo-img"
             />
-            <span className="footer-brand-name">AI Assistant</span>
+            <span className="footer-brand-name">Portafolio</span>
           </div>
           
           <p className="footer-tagline">
@@ -91,7 +91,7 @@ const Footer = () => {
 
       {/* Barra inferior */}
       <div className="footer-bottom">
-        <p>© {currentYear} AI Assistant — All rights reserved.</p>
+        <p>© {currentYear} Portafolio — All rights reserved.</p>
       </div>
     </footer>
   );

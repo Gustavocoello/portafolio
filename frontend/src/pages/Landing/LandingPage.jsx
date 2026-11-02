@@ -1906,7 +1906,7 @@ const LandingPage = () => {
 
         <div className="right-column">
           <div className={`text-content ${isLoaded ? "loaded" : ""}`}>
-            <h1 className="main-title">Welcome to my AI Assistant</h1>
+            <h1 className="main-title">Welcome to my Portafolio</h1>
             <p className="subtitle-small">
               Made with hard work and dedication, by Gustavo Coello
             </p>

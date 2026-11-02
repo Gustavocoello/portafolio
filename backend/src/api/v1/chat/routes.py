@@ -20,7 +20,7 @@ from src.services.cache.redis_cache import ChatCache
 from src.services.cache.redis_client import redis_client
 from src.database.settings.connection import SessionLocal, get_db
 from src.services.cache.redis_sidebar import SidebarCache
-from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, VISITOR_LIMIT
+from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, visitor_ip, VISITOR_LIMIT
 from src.database.models.models import Chat, Message, Document
 from src.services.auth.auth.auth_middleware import get_current_user, authenticate
 from src.services.integrations.onedrive.onedrive_service import upload_to_onedrive, get_user_onedrive_token
@@ -57,7 +57,7 @@ def secure_filename(filename: str) -> str:
 @search_router.post("/prompt")
 def handle_search_prompt(request: Request, payload: SearchPromptRequest):
     # El límite vive en el servidor (por IP): una cookie la borra cualquiera
-    ip = request.client.host if request.client else "unknown"
+    ip = visitor_ip(request)
     count = visitor_message_count(f"ip:{ip}")
     if count is None:
         raise HTTPException(status_code=503, detail="Modo de prueba no disponible por ahora.")

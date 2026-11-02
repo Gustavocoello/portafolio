@@ -24,7 +24,7 @@ from src.services.integrations.azure.azure_vision import analyze_image_with_azur
 from src.services.integrations.microsoft.markitdown_extractor import extract_text_from_file
 from src.services.agent.jarvis.agent import get_jarvis
 from src.services.auth.auth.auth_middleware import get_current_user, es_dueno
-from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, VISITOR_LIMIT
+from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, visitor_ip, VISITOR_LIMIT
 
 logger = get_logger("chat_service_v2")
 
@@ -58,7 +58,7 @@ def send_message_v2(
         # El tope es por IP (igual que sin cuenta) para que crear una cuenta no dé mensajes extra.
         owner = es_dueno(user)
         if not owner:
-            ip = request.client.host if request.client else "unknown"
+            ip = visitor_ip(request)
             count = visitor_message_count(f"ip:{ip}")
             if count is None:
                 raise HTTPException(status_code=503, detail="Modo de prueba no disponible por ahora.")

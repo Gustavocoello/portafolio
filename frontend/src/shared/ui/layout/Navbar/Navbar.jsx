@@ -33,11 +33,11 @@ const Navbar = ({ isWhiteTheme }) => {
             {/* usa tu icono transparente */}
             <img
               src="/icons/galaxy-transparent.png"
-              alt="Jarvis Logo"
+              alt="Portafolio"
               className="logo-img"
             />
           </div>
-          <span className="logo-text">AI Assistant</span>
+          <span className="logo-text">Portafolio</span>
         </div>
 
         {/* Centro/Derecha: Links */}

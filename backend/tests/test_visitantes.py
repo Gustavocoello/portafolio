@@ -27,6 +27,19 @@ def test_tope_de_visitante(monkeypatch):
     assert free_tier.visitor_message_count("ip:5.6.7.8") == 1  # cada IP lleva su cuenta
 
 
+def test_ip_del_visitante_detras_del_tunel():
+    pedido = lambda headers: SimpleNamespace(headers=headers, client=SimpleNamespace(host="172.18.0.9"))
+    assert free_tier.visitor_ip(pedido({"cf-connecting-ip": "200.1.2.3"})) == "200.1.2.3"
+    assert free_tier.visitor_ip(pedido({})) == "172.18.0.9"  # sin Cloudflare, la IP de la conexión
+
+
+def test_visitante_con_identidad(monkeypatch):
+    enviados = []
+    monkeypatch.setattr(free_tier, "completion", lambda msgs: enviados.append(msgs) or "ok")
+    free_tier.generate_prompt({"description": "¿quién eres?"})
+    assert enviados[0][0]["role"] == "system" and "Jarvis" in enviados[0][0]["content"]
+
+
 def test_sin_redis_no_cuenta(monkeypatch):
     monkeypatch.setattr(free_tier, "redis_client", SimpleNamespace(is_available=lambda: False))
     assert free_tier.visitor_message_count("ip:1.2.3.4") is None
