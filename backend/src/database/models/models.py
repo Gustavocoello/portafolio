@@ -253,7 +253,7 @@ class AgentSession(Base):
     id               = Column(UUID(as_uuid=True), primary_key=True)
     user_id          = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     chat_id          = Column(UUID(as_uuid=True), ForeignKey("chat.id"),  nullable=True)
-    thread_id        = Column(String(255), unique=True, index=True, nullable=True)
+    thread_id        = Column(String(255), index=True, nullable=True)  # varias sesiones por hilo: un chat manda muchos mensajes
     assigned_agent   = Column(String(50), nullable=False)
     status           = Column(PgEnum(AgentStatus), nullable=False, default=AgentStatus.RUNNING, index=True)
     task_description = Column(Text, nullable=True)        # Tarea y progreso - resumen de lo que hace Koda

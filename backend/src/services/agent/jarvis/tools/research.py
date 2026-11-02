@@ -8,7 +8,7 @@ from src.services.rag.vector_store import VectorStore
 from src.database.settings.connection import SessionLocal
 from src.core.logging import get_logger
 
-logger = get_logger("ragel_tools")
+logger = get_logger("research_tools")
 
 def internet_search_fallback(query: str) -> str:
     """
