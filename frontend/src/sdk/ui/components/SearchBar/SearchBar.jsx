@@ -1,30 +1,17 @@
 // src/sdk/components/SearchBar/SearchBar.jsx
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import ReactDOM from 'react-dom';
-import { MCPSearchPanel } from './utils/MCPSearchPanel';
 import { extractFileContent } from '../../../core/stream';
-import { IoIosClose } from "react-icons/io";
 import { FaArrowUp, FaStop } from 'react-icons/fa';
 import { MdOutlineAttachFile } from "react-icons/md";
-import { GrLink, GrResources } from "react-icons/gr";
-import { VscSettings, VscTools } from "react-icons/vsc";
-import { IoCloseOutline, IoDocumentTextOutline } from "react-icons/io5";
+import { IoCloseOutline } from "react-icons/io5";
 import { apiLogger } from '../../../utils/logger';
 import './SearchBar.css';
 
 const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingContext, onRemoveContext, client, getToken, appId }) => {
   const [query, setQuery] = useState('');
   const textareaRef = useRef(null);
-  const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
-  const [showMenu, setShowMenu] = useState(false);
   const [pendingFilePreview, setPendingFilePreview] = useState([]);
-  const [toolMenu, setToolMenu] = useState(false);
-  const [toolConfirmed, setToolConfirmed] = useState(false); 
-  const modalRef = useRef(null);
-  const [selectedTool, setSelectedTool] = useState(null);
-  const [selectedPrompt, setSelectedPrompt] = useState(null);
-  const [selectedResource, setSelectedResource] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   // Ref para no reconectar el SSE cada vez que el padre crea un getToken nuevo
   const getTokenRef = useRef(getToken);
@@ -97,12 +84,9 @@ const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingC
     const imageToSend = shouldSendImage ? lastUploadedImage : null;
 
     if (query.trim() || imageToSend) {
-      apiLogger.info('TriggerSearch: Iniciando búsqueda', { query: query.length > 0, hasImage: !!imageToSend, tool: selectedTool || 'none' });
-      onSearch(query, pendingContext, imageToSend, toolConfirmed && selectedTool ? selectedTool : "");
+      apiLogger.info('TriggerSearch: Iniciando búsqueda', { query: query.length > 0, hasImage: !!imageToSend });
+      onSearch(query, pendingContext, imageToSend, "");
     }
-    //Resetear selección de tool después de enviar
-    setSelectedTool(null);
-    setToolConfirmed(false);
 
     // Resetar input y archivos
     setQuery('');
@@ -127,7 +111,6 @@ const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingC
       return;
     }
 
-    setShowMenu(false);
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -184,7 +167,6 @@ const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingC
 
   // ----------------- IMAGE UPLOAD LOGIC -----------------
   const handleImageUploadOnly = useCallback(async (images) => {
-    setShowMenu(false);
 
     for (let i = 0; i < images.length; i++) {
       const file = images[i];
@@ -257,29 +239,6 @@ const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingC
   return () => document.removeEventListener("paste", handlePaste);
 }, [handleImageUploadOnly]);
 
-// ----------------- MODAL LOGIC ----------------  
-  const handleOverlayClick = (e) => {
-    if (e.target.classList.contains('modal-overlay')) {
-      setToolMenu(false);
-    }
-  };
-
-  // Logica para el botón de cerrar el modal y todos 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      const clickedInsideDropdown = dropdownRef.current && dropdownRef.current.contains(e.target);
-      const clickedInsideModal = modalRef.current && modalRef.current.contains(e.target);
-
-      if (!clickedInsideDropdown && !clickedInsideModal) {
-        setShowMenu(false);
-        setToolMenu(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-  
   return (
     <div className="search-bar-wrapper">
   {/* Caja redondeada que contiene todo lo que se expande */}
@@ -355,102 +314,12 @@ const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingC
       )}
     </div>
 
-    {/* Botón + menú */}
-    <div className="plus-menu-container" ref={dropdownRef}>
-      <VscSettings
-        className="plus-icon"
-        onClick={() => {
-          const newShow = !showMenu;
-          setShowMenu(newShow);
-          if (!newShow) {
-            setToolMenu(false);
-          }
-        }}
-      />
-      {showMenu && (
-        <div className="dropdown-menu">
-          <div className="menu-item" 
-            onClick={() => {
-              setToolMenu(true);
-            }}
-          >
-            <GrLink className="menu-icon"/>
-            <span className="menu-label">Tool Kit - MCP</span>
-          </div>
-          {/* ------- MENÚ DE HERRAMIENTAS -------*/}
-          {/* ------- MENÚ MCP COMPLETO -------*/}
-          {toolMenu && 
-            ReactDOM.createPortal(
-              <div className="modal-overlay" onClick={handleOverlayClick}>
-                <div className="modal-content mcp-modal" ref={modalRef} onClick={(e) => e.stopPropagation()}>
-                  <MCPSearchPanel 
-                    onClose={() => {
-                      setToolMenu(false);
-                      setShowMenu(false);
-                    }}
-                    onSelectTool={(toolName) => {
-                      setSelectedTool(toolName);
-                      setToolConfirmed(true);
-                      setShowMenu(false);
-                      setToolMenu(false);
-                    }}
-                    onSelectPrompt={(prompt) => {
-                      setSelectedPrompt(prompt);
-                      setToolConfirmed(true);
-                      setShowMenu(false);
-                      setToolMenu(false);
-                    }}
-                    onSelectResource={(res) => {
-                      setSelectedResource(res);
-                      setToolConfirmed(true);
-                      setShowMenu(false);
-                      setToolMenu(false);
-                    }}
-                  />
-                </div>
-              </div>,
-              document.getElementById('modal-root')
-            )
-          }
-          <div className="menu-item" onClick={handleFileSelect}>
-            <MdOutlineAttachFile className="menu-icon" />
-            <span className="menu-label">Agregar imágenes y archivos</span>
-          </div>
-        </div>
-      )}
+    {/* Adjuntar imágenes y archivos (Jarvis elige solo qué herramienta usar) */}
+    <div className="plus-menu-container">
+      <button type="button" className="attach-btn" onClick={handleFileSelect} aria-label="Adjuntar imágenes y archivos" title="Adjuntar imágenes y archivos">
+        <MdOutlineAttachFile />
+      </button>
     </div>
-    {/* --- Mostrar herramienta seleccionada --- */}
-    {toolConfirmed && (
-      <div className="selected-tool">
-        {selectedTool && (
-          <>
-            <VscTools className="selected-tool-icon" size={16} />
-            <span>{selectedTool}</span>
-          </>
-        )}
-        {selectedPrompt && (
-          <>
-            <IoDocumentTextOutline className="selected-tool-icon" size={16} />
-            <span>{selectedPrompt.name}</span>
-          </>
-        )}
-        {selectedResource && (
-          <>
-            <GrResources className="selected-tool-icon" size={16} />
-            <span>{selectedResource.name}</span>
-          </>
-        )}
-        <IoIosClose
-          className="clear-selection-icon"
-          onClick={() => {
-            setSelectedTool(null);
-            setSelectedPrompt(null);
-            setSelectedResource(null);
-            setToolConfirmed(false);
-          }}
-        />
-      </div>
-    )}
 
     {/* Input oculto para seleccionar archivos */}
     <input

@@ -77,5 +77,5 @@ pre, code {
 body:has(.jarvis-sdk-container),
 .app-container:has(.jarvis-sdk-container),
 .main-content:has(.jarvis-sdk-container) {
-  background-color: #0b0d12;
+  background-color: var(--jarvis-bg);
 }

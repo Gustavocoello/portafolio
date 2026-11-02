@@ -23,7 +23,6 @@ const ChatPage = () => {
         getToken, 
         baseURL: import.meta.env.VITE_URL,
         appId: APP_ID, // Fuerza el ID aquí
-        theme: 'dark',
         // Sin esto el botón "Cerrar sesión" del SDK solo dejaba un aviso en consola
         logout: () => signOut({ redirectUrl: '/' }),
       }}

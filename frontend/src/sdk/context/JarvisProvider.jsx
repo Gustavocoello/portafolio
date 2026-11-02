@@ -67,7 +67,8 @@ export const JarvisProvider = ({ children, config = {} }) => {
 
   return (
     <JarvisContext.Provider value={value}>
-      <div className="jarvis-sdk-container" data-theme={config.theme || 'dark'}>
+      {/* Sin config.theme, el chat sigue el tema del sitio (data-theme en <html>) */}
+      <div className="jarvis-sdk-container" data-theme={config.theme}>
         {children}
       </div>
     </JarvisContext.Provider>

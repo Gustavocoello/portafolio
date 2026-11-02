@@ -23,7 +23,7 @@ const ThemeTab = () => {
     <div className="th">
       <header className="th-head">
         <h3>Tema</h3>
-        <p>Elige cómo se ve el sitio. El chat de Jarvis se mantiene en oscuro.</p>
+        <p>Elige cómo se ve el sitio y el chat.</p>
       </header>
       <div className="th-options" role="radiogroup" aria-label="Tema">
         {OPTIONS.map((o) => (

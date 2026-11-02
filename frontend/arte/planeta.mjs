@@ -2,6 +2,7 @@
 // con anillo del logo, como una maqueta de escritorio sobre su base, con el anillo en azul hielo que brilla despacio.
 //
 //   node arte/planeta.mjs            → public/arte/planeta.svg (+ vista previa en arte/planeta.html)
+//   node arte/planeta.mjs --light    → public/arte/planeta-light.svg (tema claro)
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -14,8 +15,10 @@ const a = await import(pathToFileURL(join(KIT, "asset.mjs")).href);
 const G = await import(pathToFileURL(join(KIT, "lathe.mjs")).href);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PAPER = "#0b0d12";
-const ICE = "#8fd3ff";
+const light = process.argv.includes("--light");
+const PAPER = light ? "#f6f7f9" : "#0b0d12";
+const NAME = light ? "planeta-light" : "planeta";
+const ICE = light ? "#2b8fc9" : "#8fd3ff";
 const W = 240;
 const H = 240;
 const AZIMUTH = 50;
@@ -112,9 +115,9 @@ const svg = a.assetSvg({
   paper: PAPER,
   accents: { brand: ICE },
   weight: 0.5,
-  id: "planeta",
+  id: NAME,
 });
 mkdirSync(join(HERE, "..", "public", "arte"), { recursive: true });
-writeFileSync(join(HERE, "..", "public", "arte", "planeta.svg"), svg);
-writeFileSync(join(HERE, "planeta.html"), a.previewHtml({ title: "planeta", svg, paper: PAPER, width: W }));
-console.log(`planeta.svg ${(svg.length / 1024).toFixed(1)} KB`);
+writeFileSync(join(HERE, "..", "public", "arte", `${NAME}.svg`), svg);
+writeFileSync(join(HERE, `${NAME}.html`), a.previewHtml({ title: NAME, svg, paper: PAPER, width: W }));
+console.log(`${NAME}.svg ${(svg.length / 1024).toFixed(1)} KB`);
