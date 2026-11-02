@@ -10,12 +10,12 @@ from langchain_core.language_models.chat_models import BaseChatModel
 load_dotenv()
 logger = get_logger("backend.engine.llm")
 
-# Todo pasa por el llm-router de Oracle con el pool "tars": keys de Groq propias (3 cuentas),
+# Todo pasa por el llm-router (mvm, el centro de los LLM) con el pool "tars": keys de Groq propias (3 cuentas),
 # separadas de las de los brokers. El router rota las keys y reintenta; aquí no hay nada más.
 API_PROVIDERS_TO_AGENT = [
     {
         "name": "llm-router (Oracle, pool tars)",
-        "base_url": os.getenv("LLM_ROUTER_URL", "http://129.158.233.162:8001/v1"),
+        "base_url": os.getenv("LLM_ROUTER_URL", "https://llm.brokeria.ec/v1"),
         "key": "LLM_ROUTER_KEY",
         "model": "tars"
     },
