@@ -37,6 +37,11 @@ export const sendMessage = async (
       throw new Error('[jarvis-sdk] No autorizado. Verifica tu getToken.');
     }
 
+    if (response.status === 403) {
+      const detail = (await response.json().catch(() => ({}))).detail;
+      throw new Error(detail?.error || 'Has alcanzado el límite de mensajes de prueba.');
+    }
+
     if (!response.ok || !response.body) {
       throw new Error('[jarvis-sdk] No se pudo conectar al servidor');
     }
@@ -70,7 +75,7 @@ export const sendAnonymousMessage = async (promptText, client) => {
     const response = await client.post('/api/v1/search/prompt', { prompt: promptText });
     return response.data;
   } catch (error) {
-    throw new Error(error.response?.data?.error || 'Error en mensaje anónimo');
+    throw new Error(error.response?.data?.detail?.error || 'Error en mensaje anónimo');
   }
 };
 

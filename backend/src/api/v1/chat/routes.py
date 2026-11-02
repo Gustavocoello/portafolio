@@ -20,7 +20,7 @@ from src.services.cache.redis_cache import ChatCache
 from src.services.cache.redis_client import redis_client
 from src.database.settings.connection import SessionLocal, get_db
 from src.services.cache.redis_sidebar import SidebarCache
-from src.services.llm.chat.free_tier import generate_prompt
+from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, VISITOR_LIMIT
 from src.database.models.models import Chat, Message, Document
 from src.services.auth.auth.auth_middleware import get_current_user, authenticate
 from src.services.integrations.onedrive.onedrive_service import upload_to_onedrive, get_user_onedrive_token
@@ -33,7 +33,6 @@ logger = get_logger('routes')
 # shortcut: colas en memoria del proceso, válido con un solo worker de uvicorn; pasar a Redis pub/sub si se escala a varios
 event_queues = defaultdict(Queue)
 
-ANON_LIMIT = 5
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 DEFAULT_TITLES = (None, "", "Sin titulo", "Sin título")
 
@@ -55,35 +54,24 @@ def secure_filename(filename: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_\.-]', '_', os.path.basename(filename))
 
 ## ----------- Mensajes de la IA sin memoria --------------
-def _anon_prompt_count(ip: str) -> Optional[int]:
-    """Cuenta los prompts anónimos de una IP hoy. None si Redis no está disponible."""
-    if not redis_client.is_available():
-        return None
-    key = f"anon:prompts:{ip}:{get_now().date()}"
-    count = redis_client.client.incr(key)
-    if count == 1:
-        redis_client.client.expire(key, 86400)
-    return count
-
-
 @search_router.post("/prompt")
 def handle_search_prompt(request: Request, payload: SearchPromptRequest):
     # El límite vive en el servidor (por IP): una cookie la borra cualquiera
     ip = request.client.host if request.client else "unknown"
-    count = _anon_prompt_count(ip)
+    count = visitor_message_count(f"ip:{ip}")
     if count is None:
         raise HTTPException(status_code=503, detail="Modo de prueba no disponible por ahora.")
-    if count > ANON_LIMIT:
+    if count > VISITOR_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": f"Has alcanzado el límite de {ANON_LIMIT} mensajes de prueba.", "login_required": True}
+            detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba.", "login_required": True}
         )
 
     try:
         result = generate_prompt({"description": payload.prompt})
         return {
             "result": result,
-            "remaining": max(0, ANON_LIMIT - count)
+            "remaining": max(0, VISITOR_LIMIT - count)
         }
     except RuntimeError:
         raise HTTPException(status_code=503, detail="Error: IA no disponible")

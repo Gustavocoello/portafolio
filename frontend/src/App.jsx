@@ -75,7 +75,8 @@ function App() {
                   <Route path="/login" element={ <ClerkLayout> <SignIn/> </ClerkLayout>} />
 
                   {/* Páginas públicas */}
-                  <Route path="/jarvis" element={<SpherePage />} />
+                  <Route path="/project-tars" element={<SpherePage />} />
+                  <Route path="/jarvis" element={<Navigate to="/project-tars" replace />} />
                   <Route path="/privacy" element={<PrivacyPage />} />
                   <Route path="/guides" element={<GuidesPage />} />
                   <Route path="/mission" element={<MissionPage />} />

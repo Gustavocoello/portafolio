@@ -4,6 +4,7 @@
  * - Núcleo neuronal denso interior
  * - Colores: blanco
  * - Audio interactivo con botón micrófono
+ * - Con tars (dueño): la red blanca sigue tu voz y el núcleo azul la de TARS
  */
 
 import React, {
@@ -20,57 +21,194 @@ import { CiMicrophoneOff, CiMicrophoneOn } from "react-icons/ci";
 import "./ReactiveSphere.css";
 
 /* ==================== AUDIO HOOK ==================== */
-function useAudioLevel(active) {
-  const [level, setLevel] = useState(0);
-  const rafRef = useRef(null);
-  const analyserRef = useRef(null);
-  const audioCtxRef = useRef(null);
-  const srcRef = useRef(null);
+// shortcut: umbral fijo de voz calibrado a ojo; si corta frases o graba ruido, ajustarlo o pasar a un VAD de verdad
+const VOICE_THRESHOLD = 0.12;
+const SILENCE_MS = 900;     // silencio que cierra una frase
+const MIN_PHRASE_MS = 400;  // más corto que esto es un ruido, no una frase
+const FOLLOW_UP_MS = 8000;  // tras hablar con TARS, la siguiente frase no necesita su nombre (como Alexa)
+
+function audioLevel(analyser, buffer) {
+  analyser.getByteFrequencyData(buffer);
+  return Math.min(1, buffer.reduce((a, b) => a + b, 0) / buffer.length / 200);
+}
+
+function chime(ctx) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.value = 880;
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.3);
+}
+
+/**
+ * Micrófono siempre abierto mientras active. Con tars ({ hear, reply }) cada frase va a hear():
+ * solo cuenta si empieza con "TARS", salvo con la barra espaciadora presionada o justo después de una respuesta.
+ */
+function useVoice(active, tars) {
+  const [userLevel, setUserLevel] = useState(0);
+  const [tarsLevel, setTarsLevel] = useState(0);
+  // idle | blocked | sleeping (espera su nombre) | listening | thinking | speaking
+  const [phase, setPhase] = useState("idle");
+  const tarsRef = useRef(tars);
+  tarsRef.current = tars;
 
   useEffect(() => {
-    let mounted = true;
+    if (!active) return;
+    let stopped = false;
+    let raf, stream, ctx, followTimer;
+    let recorder = null;
+    let busy = false; // mientras TARS escucha, piensa o habla no se graba (no escucharse a sí mismo)
+    let ptt = false;  // barra espaciadora presionada
+    let followUntil = 0, startedAt = 0, lastVoice = 0;
+
+    const idlePhase = () => setPhase(performance.now() < followUntil ? "listening" : "sleeping");
+    const openFollowUp = () => {
+      followUntil = performance.now() + FOLLOW_UP_MS;
+      clearTimeout(followTimer);
+      followTimer = setTimeout(() => { if (!busy && !recorder && !stopped) idlePhase(); }, FOLLOW_UP_MS + 50);
+    };
 
     async function start() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { echoCancellation: true } 
-        });
-        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-        analyserRef.current = audioCtxRef.current.createAnalyser();
-        analyserRef.current.fftSize = 512;
-        analyserRef.current.smoothingTimeConstant = 0.8;
-
-        srcRef.current = audioCtxRef.current.createMediaStreamSource(stream);
-        srcRef.current.connect(analyserRef.current);
-
-        const bufferLen = analyserRef.current.frequencyBinCount;
-        const dataRef = new Uint8Array(bufferLen);
-
-        const tick = () => {
-          if (!mounted) return;
-          analyserRef.current.getByteFrequencyData(dataRef);
-          const avg = dataRef.reduce((a, b) => a + b, 0) / dataRef.length;
-          const normalized = Math.min(1, avg / 200);
-          setLevel((prev) => prev * 0.82 + normalized * 0.18);
-          rafRef.current = requestAnimationFrame(tick);
-        };
-        tick();
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       } catch (err) {
         console.warn("Micrófono no disponible:", err);
+        return;
       }
+      if (stopped) return stream.getTracks().forEach((t) => t.stop());
+
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const mic = ctx.createAnalyser();
+      mic.fftSize = 512;
+      mic.smoothingTimeConstant = 0.8;
+      ctx.createMediaStreamSource(stream).connect(mic);
+      const voice = ctx.createAnalyser();
+      voice.fftSize = 512;
+      voice.connect(ctx.destination);
+      const buffer = new Uint8Array(mic.frequencyBinCount);
+
+      // El navegador no deja sonar audio hasta que el usuario toca la página (pasa al abrirla con el micrófono ya permitido)
+      if (ctx.state === "suspended") setPhase("blocked");
+      else idlePhase();
+      const resume = () => ctx.state === "suspended" && ctx.resume().then(() => !stopped && idlePhase());
+      window.addEventListener("pointerdown", resume);
+      window.addEventListener("keydown", resume);
+
+      const play = async (audio) => {
+        const source = ctx.createBufferSource();
+        source.buffer = await ctx.decodeAudioData(await audio.arrayBuffer());
+        source.connect(voice);
+        await new Promise((resolve) => { source.onended = resolve; source.start(); });
+      };
+
+      const handle = async (blob, wake) => {
+        try {
+          const heard = await tarsRef.current.hear(blob, wake);
+          if (stopped || !heard.awake) return;
+          chime(ctx);
+          if (heard.text) {
+            setPhase("thinking");
+            const audio = await tarsRef.current.reply(heard.text);
+            if (stopped) return;
+            setPhase("speaking");
+            await play(audio);
+          }
+          openFollowUp();
+        } catch (err) {
+          console.warn("TARS:", err);
+        } finally {
+          busy = false;
+          if (!stopped) idlePhase();
+        }
+      };
+
+      const startRecording = (now) => {
+        const parts = [];
+        const wake = !ptt && now >= followUntil;
+        recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = (e) => parts.push(e.data);
+        recorder.onstop = function () {
+          if (stopped || this.phraseMs < MIN_PHRASE_MS) {
+            busy = false;
+            if (!stopped) idlePhase();
+            return;
+          }
+          handle(new Blob(parts, { type: this.mimeType }), wake);
+        };
+        recorder.start();
+        startedAt = now;
+        if (!wake) setPhase("listening");
+      };
+      const stopRecording = (phraseMs) => {
+        busy = true;
+        recorder.phraseMs = phraseMs;
+        recorder.stop();
+        recorder = null;
+      };
+
+      const onKeyDown = (e) => {
+        if (e.code !== "Space" || e.repeat || busy || !tarsRef.current || e.target.closest?.("input, textarea")) return;
+        e.preventDefault();
+        if (recorder) { recorder.onstop = null; recorder.stop(); recorder = null; } // descarta lo que grababa sola
+        ptt = true;
+        startRecording(performance.now());
+      };
+      const onKeyUp = (e) => {
+        if (e.code !== "Space" || !ptt) return;
+        ptt = false;
+        if (recorder) stopRecording(performance.now() - startedAt);
+      };
+      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("keyup", onKeyUp);
+
+      const tick = () => {
+        if (stopped) return;
+        const level = audioLevel(mic, buffer);
+        setUserLevel((prev) => prev * 0.82 + (busy ? 0 : level) * 0.18);
+        setTarsLevel((prev) => prev * 0.82 + audioLevel(voice, buffer) * 0.18);
+
+        const now = performance.now();
+        if (tarsRef.current && !busy && !ptt) {
+          if (level > VOICE_THRESHOLD) {
+            lastVoice = now;
+            if (!recorder) startRecording(now);
+          } else if (recorder && now - lastVoice > SILENCE_MS) {
+            stopRecording(lastVoice - startedAt);
+          }
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      tick();
+
+      cleanups.push(() => {
+        window.removeEventListener("pointerdown", resume);
+        window.removeEventListener("keydown", resume);
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+      });
     }
 
-    if (active) start();
-
+    const cleanups = [];
+    start();
     return () => {
-      mounted = false;
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (srcRef.current) srcRef.current.disconnect();
-      if (audioCtxRef.current) audioCtxRef.current.close();
+      stopped = true;
+      cancelAnimationFrame(raf);
+      clearTimeout(followTimer);
+      cleanups.forEach((fn) => fn());
+      if (recorder?.state === "recording") recorder.stop();
+      stream?.getTracks().forEach((t) => t.stop()); // apaga el micrófono del todo
+      ctx?.close();
+      setPhase("idle");
+      setUserLevel(0);
+      setTarsLevel(0);
     };
   }, [active]);
 
-  return level;
+  return { userLevel, tarsLevel, phase };
 }
 
 /* ==================== NEURAL NODES GENERATOR ==================== */
@@ -367,7 +505,7 @@ function InnerNeuralNetwork({ audioLevel }) {
 }
 
 /* ==================== 3D SCENE ==================== */
-function Scene3D({ audioLevel }) {
+function Scene3D({ userLevel, tarsLevel }) {
   const groupRef = useRef();
 
   useFrame(() => {
@@ -385,17 +523,34 @@ function Scene3D({ audioLevel }) {
       <pointLight position={[-5, -5, -5]} intensity={0.5} color="#ffffff" distance={25} />
 
       <group ref={groupRef}>
-        <OuterPlanetNetwork audioLevel={audioLevel} />
-        <InnerNeuralNetwork audioLevel={audioLevel} />
+        <OuterPlanetNetwork audioLevel={userLevel} />
+        <InnerNeuralNetwork audioLevel={tarsLevel} />
       </group>
     </>
   );
 }
 
 /* ==================== MAIN COMPONENT ==================== */
-const ReactiveSphere = forwardRef(function ReactiveSphere(props, ref) {
+const PHASE_TEXT = {
+  idle: "Turn on the microphone to wake TARS",
+  blocked: "Click anywhere to wake TARS",
+  sleeping: "Say \u201cTARS\u201d or hold Space",
+  listening: "Listening…",
+  thinking: "Thinking…",
+  speaking: "",
+};
+
+const ReactiveSphere = forwardRef(function ReactiveSphere({ tars = null }, ref) {
   const [listening, setListening] = useState(false);
-  const audioLevel = useAudioLevel(listening);
+  const { userLevel, tarsLevel, phase } = useVoice(listening, tars);
+
+  // Como Alexa: si el micrófono ya está permitido, TARS queda escuchando al abrir la página
+  useEffect(() => {
+    if (!tars) return;
+    navigator.permissions?.query({ name: "microphone" })
+      .then((p) => p.state === "granted" && setListening(true))
+      .catch(() => {});
+  }, [tars]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -419,15 +574,20 @@ const ReactiveSphere = forwardRef(function ReactiveSphere(props, ref) {
         gl={{ alpha: true, antialias: true, precision: "highp" }}
         dpr={Math.min(window.devicePixelRatio, 2)}
       >
-        <Scene3D audioLevel={audioLevel} />
+        <Scene3D userLevel={userLevel} tarsLevel={tarsLevel} />
       </Canvas>
+
+      <p className="rs3d-phase" aria-live="polite">{tars ? PHASE_TEXT[phase] : ""}</p>
 
       {/* Botón micrófono */}
       <div className="rs3d-controls">
         <button
           aria-label={listening ? "Detener audio" : "Activar audio"}
           className={`rs3d-mic-btn ${listening ? "listening" : ""}`}
-          onClick={() => setListening((v) => !v)}
+          onClick={(e) => {
+            setListening((v) => !v);
+            e.currentTarget.blur(); // si queda con foco, la barra espaciadora lo apagaría en vez de hablar con TARS
+          }}
           title="Presiona M para alternar"
         >
           {listening ? <CiMicrophoneOff size={22} /> : <CiMicrophoneOn size={22} />}

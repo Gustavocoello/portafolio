@@ -16,6 +16,7 @@ load_dotenv()
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL") 
 CLERK_DOMAIN = os.getenv("CLERK_DOMAIN")
 MANUAL_JWT_SECRET = os.getenv("BACKEND_JWT_SECRET")
+OWNER_EMAIL = os.getenv("OWNER_EMAIL", "").strip().lower()
 
 # Cache para las JWKS
 cached_jwks = None
@@ -149,3 +150,14 @@ def authenticate(token: str, app_id: str) -> dict:
             detail=f"Authentication failed: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"}
         )
+
+
+def es_dueno(user: dict) -> bool:
+    """Solo el dueño (OWNER_EMAIL) usa las herramientas personales (correo, calendario...), la memoria y TARS."""
+    return bool(OWNER_EMAIL) and (user["user_obj"].email or "").lower() == OWNER_EMAIL
+
+
+def get_owner(user: dict = Depends(get_current_user)) -> dict:
+    if not es_dueno(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo disponible para el dueño.")
+    return user

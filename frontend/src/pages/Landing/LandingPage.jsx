@@ -75,7 +75,7 @@ const LandingPage = () => {
   };
 
   const goToJarvis = () => {
-    navigate("/jarvis");
+    navigate("/project-tars");
   };
 
   useEffect(() => {
@@ -1969,11 +1969,11 @@ const LandingPage = () => {
             <div className="text-content loaded">
               <h1 className="main-title"> Talk to TARS like in Interstellar </h1>
               <p className="subtitle">
-                Developing a voice-interactive AI assistant using OpenAI's technology
+                A real-time voice assistant with the personality of TARS. It speaks Spanish and uses the same tools
+                as Jarvis: email, calendar, Notion, GitHub and web search.
               </p>
-              {/* Nuevo párrafo */}
               <p className="subtitle-under-development">
-                Under developing
+                Private project: request a demo from its page
               </p>
             </div>
           </div>

@@ -29,6 +29,17 @@ class MemoryType(str, Enum):
     SHORT_TERM = "short_term"
     LONG_TERM = "long_term"
 
+class ContactRequest(Base):
+    """Pedidos del formulario de contacto (se guardan aunque falle el correo de aviso)."""
+    __tablename__ = 'contact_requests'
+
+    id         = Column(Integer, primary_key=True)
+    name       = Column(String(120), nullable=False)
+    email      = Column(String(255), nullable=False)
+    reason     = Column(String(30), nullable=False)  # demo | similar
+    message    = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_now)
+
 # --- MODELOS DE USUARIO Y CHAT ---
 class User(Base):
     __tablename__ = 'users'

@@ -46,6 +46,8 @@ class JarvisAgent(BaseAgent):
         llm = get_langchain_llm() 
         tools = build_jarvis_tools(user_id=user_id, client_type=client_type)
         template = get_jarvis_template()
+        if client_type == "tars":  # mismas herramientas, voz y personalidad de TARS
+            template += "\n" + (Path(__file__).resolve().parent / "TARS.md").read_text(encoding="utf-8")
         super().__init__(llm, tools, template)
 
 

@@ -14,7 +14,10 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Pruebas del backend
         working-directory: backend
-        run: PYTHONPATH=. uv run --no-project --python 3.11 --with pytest --with openai --with langchain-openai --with langchain-core --with python-dotenv pytest -q tests
+        # La URL de la base no se usa (las pruebas no conectan), pero los modelos la piden al importar
+        env:
+          DATABASE_URL: postgresql+psycopg2://x:x@localhost:1/x
+        run: PYTHONPATH=. uv run --no-project --python 3.11 --with pytest --with openai --with langchain-openai --with langchain-core --with python-dotenv --with redis --with fastapi --with pyjwt --with cryptography --with requests --with sqlalchemy --with psycopg2-binary --with pgvector --with pytz pytest -q tests
 
   desplegar:
     needs: probar

@@ -3,7 +3,7 @@ import json
 from uuid import UUID
 from pydantic import BaseModel
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -23,7 +23,8 @@ from src.services.rag.pipeline import RAGPipeline
 from src.services.integrations.azure.azure_vision import analyze_image_with_azure
 from src.services.integrations.microsoft.markitdown_extractor import extract_text_from_file
 from src.services.agent.jarvis.agent import get_jarvis
-from src.services.auth.auth.auth_middleware import get_current_user
+from src.services.auth.auth.auth_middleware import get_current_user, es_dueno
+from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, VISITOR_LIMIT
 
 logger = get_logger("chat_service_v2")
 
@@ -44,6 +45,7 @@ DEFAULT_TITLES = (None, "", "Sin titulo", "Sin título")
 def send_message_v2(
     chat_id: UUID,
     payload: SendMessageV2Request,
+    request: Request,
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user)
 ):
@@ -51,6 +53,20 @@ def send_message_v2(
         user_text = payload.text.strip()
         if not user_text:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty message")
+
+        # Visitantes: las herramientas leen el correo y la agenda del dueño, así que solo chat simple y con tope.
+        # El tope es por IP (igual que sin cuenta) para que crear una cuenta no dé mensajes extra.
+        owner = es_dueno(user)
+        if not owner:
+            ip = request.client.host if request.client else "unknown"
+            count = visitor_message_count(f"ip:{ip}")
+            if count is None:
+                raise HTTPException(status_code=503, detail="Modo de prueba no disponible por ahora.")
+            if count > VISITOR_LIMIT:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba."}
+                )
 
         # 1. Buscar o Crear Chat
         chat = db.query(Chat).filter(
@@ -76,7 +92,7 @@ def send_message_v2(
             db.commit()
 
         # 4. Agente
-        jarvis_agent = get_jarvis(user["user_id"])
+        jarvis_agent = get_jarvis(user["user_id"]) if owner else None
 
         # 6. Autogenerar título
         if chat.title in DEFAULT_TITLES:
@@ -93,15 +109,18 @@ def send_message_v2(
             gen_session = SessionLocal()
             try:
                 full_reply = ""
-                # El hilo de memoria del agente es el chat: así recuerda la conversación entre mensajes
-                for state_chunk in jarvis_agent.stream_task(user_text, user["user_id"], chat_id=str(chat_id), thread_id=str(chat_id)):
-                    if "error" in state_chunk:
-                        yield f"[ERROR] {state_chunk['error']}"
-                        return
-                    messages = state_chunk.get("messages", [])
-                    last_msg = messages[-1] if messages else None
-                    if isinstance(last_msg, AIMessage) and not last_msg.tool_calls:
-                        full_reply = last_msg.content
+                if not owner:
+                    full_reply = generate_prompt({"description": user_text})  # sin memoria ni herramientas
+                else:
+                    # El hilo de memoria del agente es el chat: así recuerda la conversación entre mensajes
+                    for state_chunk in jarvis_agent.stream_task(user_text, user["user_id"], chat_id=str(chat_id), thread_id=str(chat_id)):
+                        if "error" in state_chunk:
+                            yield f"[ERROR] {state_chunk['error']}"
+                            return
+                        messages = state_chunk.get("messages", [])
+                        last_msg = messages[-1] if messages else None
+                        if isinstance(last_msg, AIMessage) and not last_msg.tool_calls:
+                            full_reply = last_msg.content
 
                 if full_reply:
                     yield full_reply

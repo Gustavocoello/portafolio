@@ -93,6 +93,21 @@
   }
 }
 
+/* ==================== FASE DE TARS ==================== */
+.rs3d-phase {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: "Courier New", monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+  pointer-events: none;
+  z-index: 20;
+}
+
 /* ==================== RESPONSIVE ==================== */
 @media (max-width: 768px) {
   .rs3d-logo {

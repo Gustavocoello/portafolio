@@ -8,10 +8,12 @@ from src.api.v1.chat.routes import search_router, chat_router
 from src.api.v1.auth.google_routes import google_auth_router
 from src.api.v1.auth.onedrive_routes import onedrive_router
 from src.api.v1.auth.user_routes import user_router, integrations_router
+from src.api.v1.contact.routes import contact_router
 
 # Los routers v2 y de telemetría
 from src.api.v2.chat.routes import chat_v2_router
 from src.api.v2.security.routes import health_router
+from src.api.v2.tars.routes import tars_router
 from dotenv import load_dotenv
 from sqlalchemy import text
 from src.database.settings.connection import Base, engine
@@ -51,9 +53,11 @@ app.include_router(google_auth_router)
 app.include_router(user_router)
 app.include_router(onedrive_router)  # prefijo propio: /api/onedrive
 app.include_router(integrations_router)  # prefijo propio: /api/v1/integrations
+app.include_router(contact_router)  # prefijo propio: /api/v1/contact
 
 # Rutas v2
 app.include_router(chat_v2_router, prefix="/api/v2/chat")
+app.include_router(tars_router, prefix="/api/v2/tars")
 app.include_router(health_router)
 
 if __name__ == "__main__":
