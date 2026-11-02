@@ -28,7 +28,7 @@ const ChatPage = () => {
         logout: () => signOut({ redirectUrl: '/' }),
       }}
     >
-      <div className="sdk-layout-wrapper" style={{ display: 'flex', height: '100vh', width: '100vw' }}>
+      <div className="sdk-layout-wrapper" style={{ display: 'flex', height: '100dvh', width: '100%' }}>
         {/* El Sidebar vive AQUÍ, por eso solo aparece en el chat */}
         <Sidebar onNavigate={(path) => navigate(path.startsWith('/') ? path : `/${path}`)}/>
           {/* EL CHAT SIEMPRE ESTÁ AQUÍ - NUNCA SE DESMONTA */}

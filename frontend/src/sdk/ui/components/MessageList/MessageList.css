@@ -82,7 +82,7 @@
   word-break: break-word;
   line-height: 1.4; 
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  text-align: justify;
+  text-align: left;
 }
 
 .message.user .message-bubble {
@@ -296,6 +296,7 @@ body {
   justify-content: center;
   align-items: center;
   height: 100vh;
+  height: 100dvh;
   font-size: 1.2rem;
   color: var(--text-color, var(--jarvis-muted));
 }
@@ -346,6 +347,7 @@ body {
   .content-area {
     padding: 0 10px;
     height: calc(100vh - 90px);
+    height: calc(100dvh - 90px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -696,4 +698,10 @@ body {
 
 .assistant-menu-item:hover svg {
   color: var(--jarvis-text);
+}
+
+/* Celular: espacio arriba para los botones flotantes (menú y engranaje) y abajo para la caja de texto */
+@media (max-width: 768px) {
+  .message-list { padding-top: 64px; padding-left: 12px; padding-right: 12px; }
+  .message-bubble { max-width: 92%; }
 }

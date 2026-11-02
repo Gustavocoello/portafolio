@@ -3,8 +3,9 @@
   position: absolute;
   top: 0;
   left: 0;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
+  height: 100dvh;
   background-color: black;
   overflow: hidden;
   z-index: 0;
@@ -116,12 +117,21 @@
     left: 16px;
   }
 
+  /* el micrófono va abajo al centro, a mano del pulgar; el estado sube para no chocar con él */
   .rs3d-mic-btn {
-    width: 50px;
-    height: 50px;
-    font-size: 20px;
-    bottom: 24px;
-    right: 24px;
+    width: 64px;
+    height: 64px;
+    font-size: 24px;
+    bottom: calc(28px + env(safe-area-inset-bottom));
+    right: 50%;
+    transform: translateX(50%);
+  }
+
+  .rs3d-phase {
+    bottom: calc(108px + env(safe-area-inset-bottom));
+    max-width: 86%;
+    text-align: center;
+    font-size: 13px;
   }
 }
 
