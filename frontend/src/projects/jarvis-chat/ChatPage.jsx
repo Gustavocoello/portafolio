@@ -2,10 +2,12 @@
 import React from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { JarvisProvider, Sidebar, ChatContainer, ConfigPage } from '@/sdk';
+import { useClerk } from '@clerk/clerk-react';
 import { useAuthContext } from '@/core/auth/AuthContext';
 
 const ChatPage = () => {
   const { getToken } = useAuthContext();
+  const { signOut } = useClerk();
   const location = useLocation();
   const navigate = useNavigate();
   const { userId } = useParams();
@@ -21,7 +23,9 @@ const ChatPage = () => {
         getToken, 
         baseURL: import.meta.env.VITE_URL,
         appId: APP_ID, // Fuerza el ID aquí
-        theme: 'dark'
+        theme: 'dark',
+        // Sin esto el botón "Cerrar sesión" del SDK solo dejaba un aviso en consola
+        logout: () => signOut({ redirectUrl: '/' }),
       }}
     >
       <div className="sdk-layout-wrapper" style={{ display: 'flex', height: '100vh', width: '100vw' }}>

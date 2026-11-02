@@ -133,8 +133,8 @@ const ChatContent = ({ isAuthenticated }) => {
       <div className="content-area">
         {localMessages.length === 0 && (
           <div className="jarvis-empty">
-            {/* Dibujo hecho con anatomy-asset: frontend/arte/mayordomo.mjs */}
-            <img src="/arte/mayordomo.svg" alt="" className="jarvis-empty-art" />
+            {/* Dibujo hecho con anatomy-asset: frontend/arte/planeta.mjs */}
+            <img src="/arte/planeta.svg" alt="" className="jarvis-empty-art" />
             <h1 className="jarvis-title">Hi, I'm Jarvis.</h1>
             <p className="jarvis-subtitle">How can I help you today?</p>
           </div>

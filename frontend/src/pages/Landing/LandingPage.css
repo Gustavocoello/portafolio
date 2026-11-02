@@ -1138,3 +1138,7 @@
   opacity: 0;
   transition: opacity 0.5s ease;
 }
+/* Developer: una versión del dibujo por tema */
+.perfil-light { display: none; }
+[data-theme='light'] .perfil-light { display: block; }
+[data-theme='light'] .perfil-dark { display: none; }

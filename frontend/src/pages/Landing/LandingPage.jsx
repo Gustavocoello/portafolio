@@ -2092,7 +2092,9 @@ const LandingPage = () => {
 
           {/* Columna derecha: Imagen (más pequeña) */}
           <div className="terminal-image">
-            <img src="/icons/perfil.png" alt="Perfil Retro" className="perfil-img" />
+            {/* Dibujo hecho con anatomy-asset: frontend/arte/developer.mjs (oscuro y --light) */}
+            <img src="/arte/developer.svg" alt="Casco de astronauta junto a una laptop con código" className="perfil-img perfil-dark" />
+            <img src="/arte/developer-light.svg" alt="Casco de astronauta junto a una laptop con código" className="perfil-img perfil-light" />
           </div>
         </div>
       </section>

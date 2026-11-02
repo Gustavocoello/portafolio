@@ -1,50 +1,43 @@
 import React, { useEffect, useState } from 'react';
+import { TbMoon, TbSun, TbDeviceDesktop } from 'react-icons/tb';
 import './ThemeTab.css';
-//import BackgroundTechPattern from './BackgroundTechPattern';
 
+const OPTIONS = [
+  { id: 'dark', label: 'Oscuro', icon: <TbMoon /> },
+  { id: 'light', label: 'Claro', icon: <TbSun /> },
+  { id: 'system', label: 'Sistema', icon: <TbDeviceDesktop /> },
+];
 
 const ThemeTab = () => {
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('preferred-theme') || 'system';
-  });
+  const [theme, setTheme] = useState(() => localStorage.getItem('preferred-theme') || 'system');
 
   useEffect(() => {
-    if (theme === 'system') {
-      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', systemPrefersDark ? 'dark' : 'light');
-    } else {
-      document.documentElement.setAttribute('data-theme', theme);
-    }
-
-    // Guardar en localStorage
+    const resolved = theme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : theme;
+    document.documentElement.setAttribute('data-theme', resolved);
     localStorage.setItem('preferred-theme', theme);
   }, [theme]);
 
-  const handleThemeChange = (e) => {
-    setTheme(e.target.value);
-  };
-
-  //const handleAddCustomTheme = () => {
-  //  alert('Funcionalidad para agregar temas personalizados próximamente.');
-  //};
-
   return (
-    <div className="theme-container">
-      <h3>Tema</h3>
-      <p>Aquí podrás seleccionar el tema de la interfaz.</p>
-
-      <div className="theme-group">
-        <label className="theme-label" htmlFor="theme-select">Tema:</label>
-        <select
-          id="theme-select"
-          value={theme}
-          onChange={handleThemeChange}
-          className="theme-select"
-        >
-          <option value="system">Sistema</option>
-          <option value="dark">Oscuro</option>
-          <option value="light">Claro</option>
-        </select>
+    <div className="th">
+      <header className="th-head">
+        <h3>Tema</h3>
+        <p>Elige cómo se ve el sitio. El chat de Jarvis se mantiene en oscuro.</p>
+      </header>
+      <div className="th-options" role="radiogroup" aria-label="Tema">
+        {OPTIONS.map((o) => (
+          <button
+            key={o.id}
+            role="radio"
+            aria-checked={theme === o.id}
+            className={`th-option ${theme === o.id ? 'active' : ''}`}
+            onClick={() => setTheme(o.id)}
+          >
+            <span className="th-icon" aria-hidden="true">{o.icon}</span>
+            {o.label}
+          </button>
+        ))}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ name: Probar y desplegar
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -21,7 +21,7 @@ jobs:
 
   desplegar:
     needs: probar
-    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     # Runner propio registrado en previseguros-server con la etiqueta portafolio.
     runs-on: [self-hosted, portafolio]
     env:
