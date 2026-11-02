@@ -6,8 +6,8 @@ const JARVIS_API = import.meta.env.VITE_URL;
 
 export const useMCPTools = () => {
   const [tools, setTools] = useState([]);
-  const [prompts, setPrompts] = useState([]);
-  const [resources, setResources] = useState([]);
+  const [prompts] = useState([]);
+  const [resources] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isConnected, setIsConnected] = useState(false);

@@ -74,6 +74,7 @@ const McpTab = () => {
     if (params.get("connection_success") || params.get("error")) {
       window.history.replaceState({}, "", window.location.pathname);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar; con la función de dependencia se recargaría en cada render
   }, []);
 
   const handleServiceConnect = async (serviceName) => {

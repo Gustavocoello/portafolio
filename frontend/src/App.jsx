@@ -1,6 +1,6 @@
 // src/App.jsx
-import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 // PAGE 
 import DashboardPage from '@/projects/dashboard/DashboardPage';
 import LandingPage from '@/pages/Landing/LandingPage';
@@ -24,9 +24,8 @@ import '@/styles/App.css';
 
 
 function App() {
-  const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme'));
   const { isSignedIn } = useUser();
-  const { dbUserId, isSynced, syncError } = useSyncUser();
+  const { syncError } = useSyncUser();
   const { getToken } = useAuthContext();
 
 
@@ -38,15 +37,6 @@ function App() {
       authLogger.info('✅ Token configurado globalmente');
       }
   }, [isSignedIn, getToken]);
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setTheme(document.documentElement.getAttribute('data-theme'));
-    });
-
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, []);
 
   // Opcional: Mostrar error de sincronización si ocurre
   useEffect(() => {

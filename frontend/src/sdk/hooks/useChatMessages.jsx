@@ -3,7 +3,7 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchChatMessages } from '../core/chatApi'; // Cambiar esto el import
 import { parseChatMessagesResponse } from '../utils/chatResponseParser';  // Cambiar esto el import
-import { appendMessageToCache, prependMessagesToCache, trimChatCache } from '../utils/chatCacheHelpers'; 
+import { appendMessageToCache, trimChatCache } from '../utils/chatCacheHelpers'; 
 import chatMemoryCache from '../utils/chatMemoryCache'; // Cambiar esto el import 
 import Logger from '../utils/logger';
 

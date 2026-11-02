@@ -79,7 +79,7 @@ const highlightSearchTerm = (text, searchTerm) => {
   return text.replace(regex, '<mark class="search-highlight">$1</mark>');
 };
 
-const UserMessageWrapper = ({ content, children, isHighlighted, searchTerm }) => {
+const UserMessageWrapper = ({ content, children, isHighlighted }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isPinned, setIsPinned] = useState(false);

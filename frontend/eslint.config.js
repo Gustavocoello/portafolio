@@ -26,4 +26,13 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    files: ['*.config.js'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    // Loggers, barril del SDK y contextos: exportan funciones y constantes a propósito
+    files: ['src/**/logger.jsx', 'src/sdk/index.jsx', 'src/core/auth/AuthContext.jsx', 'src/sdk/context/JarvisProvider.jsx'],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
 ])

@@ -1,5 +1,5 @@
 // src/sdk/context/JarvisProvider.jsx
-import React, { createContext, useContext, useMemo, useEffect, useState } from 'react';
+import React, { createContext, useMemo, useEffect, useState } from 'react';
 import { createChatClient } from '../core/client';
 import { streamLogger } from '../utils/logger';
 
@@ -9,7 +9,7 @@ export const JarvisProvider = ({ children, config = {} }) => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
-  const { baseURL, getToken, appId, theme, logout } = config;
+  const { baseURL, getToken, appId } = config;
   
   const client = useMemo(() => {
     streamLogger.info('[jarvis-sdk] - JarvisProvider: Creando cliente con AppID:', appId);
@@ -50,7 +50,7 @@ export const JarvisProvider = ({ children, config = {} }) => {
     };
 
     init();
-  }, [client, getToken, appId]);
+  }, [client, getToken, appId, baseURL]);
 
   const value = useMemo(() => ({
     version: '2026.1.0',
@@ -74,9 +74,4 @@ export const JarvisProvider = ({ children, config = {} }) => {
   );
 };
 
-export const useJarvis = () => {
-  const context = useContext(JarvisContext);
-  if (!context) throw new Error('useJarvis debe usarse dentro de JarvisProvider');
-  return context;
-};
 

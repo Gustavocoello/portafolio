@@ -19,7 +19,7 @@ const LOG_LEVELS = {
 const getDebugMode = () => {
   try {
     return import.meta.env.VITE_DEBUG === 'true';
-  } catch (error) {
+  } catch {
     return false; 
   }
 };

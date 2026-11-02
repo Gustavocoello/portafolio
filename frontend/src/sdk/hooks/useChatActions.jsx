@@ -53,8 +53,6 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
       : userContent;
 
     // Preparar UI (HTML)
-    const escapeHtml = (text) => text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-    const htmlParts = [];
     if (userContent || !image) {
       const escapeHtml = (text) => text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
       userMessages.push({

@@ -12,7 +12,7 @@ import { TfiReload } from "react-icons/tfi";
 import { GiArmoredBoomerang } from "react-icons/gi";
 import { mcpLogger } from '../../../../utils/logger';
 import '../../Config/tabs/McpTab/McpTab.css'
-const MCPSearchPanel = ({ onClose, onSelectTool }) => {
+const MCPSearchPanel = ({ onSelectTool }) => {
   const [activeTab, setActiveTab] = useState('tools');
   const { 
     isConnected, 

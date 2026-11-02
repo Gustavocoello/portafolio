@@ -1,5 +1,5 @@
 // src/features/chat/ChatPage.jsx
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useEffect } from 'react';
 import MarkdownIt from 'markdown-it';
 import { TbMessagePlus } from "react-icons/tb";
 import jarvisLogo from '../../../assets/icons/jarvis00.png';
@@ -25,7 +25,7 @@ import { streamLogger } from '../../../utils/logger';
 const md = new MarkdownIt({ html: false, linkify: true });
 
 // --- 1. NUEVO COMPONENTE INTERNO (Contiene toda la lógica de Hooks) ---
-const ChatContent = ({ guest, isAuthenticated, onUnauthorized }) => {
+const ChatContent = ({ isAuthenticated }) => {
   // Mueve TODOS los hooks aquí. Ahora se ejecutarán siempre en orden.
   const { 
     client,
@@ -81,7 +81,7 @@ const ChatContent = ({ guest, isAuthenticated, onUnauthorized }) => {
       }
     };
     if (isAuthenticated && !isInitializing) initChat();
-  }, [isAuthenticated, setActiveChatId]);
+  }, [isAuthenticated, isInitializing, client, setActiveChatId]);
 
   // (Sigue pegando aquí el resto de useEffects: el 2, 3, 4, 5 y 6 que tenías)
   useEffect(() => {
@@ -96,12 +96,12 @@ const ChatContent = ({ guest, isAuthenticated, onUnauthorized }) => {
       setHasSentMessage(true);
       chatEvents.emit('chats-updated');
     }
-  }, [cachedMessages, hasSentMessage]);
+  }, [cachedMessages, hasSentMessage, setLocalMessages, setHasSentMessage]);
   // 3. Escuchar Sidebar 
   useEffect(() => {
     const unsubscribe = chatEvents.on('chat-loaded', (data) => { if (data?.chatId) setActiveChatId(data.chatId); });
     return () => unsubscribe();
-  }, []);
+  }, [setActiveChatId]);
 
   // 4. Limpieza de anónimos 
   useEffect(() => { 
@@ -116,7 +116,7 @@ const ChatContent = ({ guest, isAuthenticated, onUnauthorized }) => {
   // 6. Si el ID cambia a null (nuevo chat), limpiamos la pantalla
   useEffect(() => { 
     if (!activeChatId) setLocalMessages([]); 
-  }, [activeChatId]);
+  }, [activeChatId, setLocalMessages]);
 
   const createNewChat = async () => {
     try {
@@ -209,7 +209,6 @@ const ChatContent = ({ guest, isAuthenticated, onUnauthorized }) => {
 const ChatContainer = ({ 
   guest = false, 
   onUnauthorized = () => console.warn("Login required"),
-  renderLogo = null,
 }) => {
   const { isAuthenticated, isInitializing } = useJarvis();
 
@@ -223,7 +222,7 @@ const ChatContainer = ({
   }
 
   // C. Si todo está OK, renderizamos el contenido real
-  return <ChatContent guest={guest} isAuthenticated={isAuthenticated} onUnauthorized={onUnauthorized} />;
+  return <ChatContent isAuthenticated={isAuthenticated} />;
 };
 
 export default ChatContainer;

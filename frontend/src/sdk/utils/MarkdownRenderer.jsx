@@ -13,7 +13,7 @@ const md = new MarkdownIt({
     try {
       const highlighted = hljs.highlight(str, { language: validLang }).value;
       return `<pre><code class="language-${validLang}">${highlighted}</code></pre>`;
-    } catch (_) {
+    } catch {
       return `<pre><code>${md.utils.escapeHtml(str)}</code></pre>`;
     }
   }

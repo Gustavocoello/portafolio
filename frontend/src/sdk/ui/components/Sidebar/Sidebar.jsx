@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import dayjs from 'dayjs';
 import { CgMoreAlt } from "react-icons/cg";
 import { TbLayoutSidebar } from "react-icons/tb";
@@ -45,7 +45,7 @@ const Sidebar = ({
   };
   
   // Cargar los chats desde localStorage
-  const fetchAndSetChats = async () => {
+  const fetchAndSetChats = useCallback(async () => {
     if ( !client || !isAuthenticated) return;
 
     try {
@@ -65,7 +65,7 @@ const Sidebar = ({
     } catch (error) {
       log.error(' [Sidebar] Error cargando chats:', error);
     }
-  };
+  }, [client, isAuthenticated]);
 
   useEffect(() => {
     chatEvents.emit('sidebar-toggled', { isOpen });
@@ -75,7 +75,7 @@ const Sidebar = ({
     if (isAuthenticated && !isInitializing && client) {
       fetchAndSetChats(); 
     }
-  }, [isAuthenticated, isInitializing, client]);
+  }, [isAuthenticated, isInitializing, client, fetchAndSetChats]);
 
   // Listener de chats-updated restaurado con !isInitializing
   useEffect(() => {
@@ -86,7 +86,7 @@ const Sidebar = ({
       }
     });
     return () => unsubscribe();
-  }, [isAuthenticated, isInitializing]);
+  }, [isAuthenticated, isInitializing, fetchAndSetChats]);
 
   // Escuchar cambios externos en el chat activo
   useEffect(() => {
@@ -251,7 +251,7 @@ const Sidebar = ({
             className={`sidebar-item sidebar-settings ${isActive(settingsPath) ? 'active' : ''}`}
             onClick={() => {
               if (typeof onNavigate === 'function') {
-                onNavigate(`${getUserChatPath()}${settingsPath}`);
+                navigateToPath(settingsPath);
               } else {
                 console.error("onNavigate no está definida en el Sidebar");
               }
