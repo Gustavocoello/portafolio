@@ -115,7 +115,7 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
         streamLogger.error(err);
         // El chat dibuja a partir de `content`: sin él, el error quedaba como una burbuja vacía
         const msg = (err.message || '').replace(/^\[jarvis-sdk\][^:]*:\s*/, '') || 'No se pudo conectar con Jarvis.';
-        updateMessageInCache(jarvisTempId, { content: `⚠️ ${msg}`, html: md.render(`⚠️ ${msg}`), stable: true }, idToSend);
+        updateMessageInCache(jarvisTempId, { content: msg, html: md.render(msg), error: true, stable: true }, idToSend);
       }
     } finally {
       setIsJarvisTyping(false);

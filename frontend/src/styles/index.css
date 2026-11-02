@@ -34,11 +34,17 @@ code {
   color: var(--jarvis-text);
   border: 1px solid var(--jarvis-border);
 }
+/* Las respuestas de Jarvis van como texto a lo ancho, sin caja (como Claude); solo el usuario lleva burbuja */
 .jarvis-sdk-container .message.assistant .message-bubble,
 .jarvis-sdk-container .message.jarvis .message-bubble {
-  background-color: var(--jarvis-bubble-ai);
+  background-color: transparent;
   color: var(--jarvis-text);
-  border: 1px solid var(--jarvis-border);
+  border: none;
+  box-shadow: none;
+  padding: 4px 2px;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
 }
 .jarvis-sdk-container .typing-indicator {
   color: var(--jarvis-muted);

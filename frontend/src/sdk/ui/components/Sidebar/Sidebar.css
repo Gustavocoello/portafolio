@@ -94,6 +94,7 @@
 /* == SIDEBAR GENERAL == */
 /* ================= */
 .sidebar {
+  box-sizing: border-box; /* sin esto el relleno empujaba el pie fuera de la pantalla */
   width: 240px;
   background: var(--jarvis-surface);
   padding: 20px 15px;
@@ -121,21 +122,8 @@
 }
 
 .sidebar-upper {
-  margin-top: 10px;
-  margin-bottom: 20px;
-}
-
-/* ================= */
-/* == LOGO JARVIS == */
-/* ================= */
-.jarvis-logo {
-  width: 200px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px;
-  margin: 0 auto;
+  margin-top: 44px; /* debajo del botón flotante del menú */
+  margin-bottom: 12px;
 }
 
 /* ================= */
@@ -155,7 +143,7 @@
 }
 
 .sidebar-item:hover {
-  background: #706b6b;
+  background: var(--jarvis-hover);
 }
 
 .sidebar-item.active {
@@ -163,15 +151,48 @@
   box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-.sidebar-item.jarvis:hover {
-  background: transparent !important;
-}
 
-/* Settings con el MISMO ESTILO que Dashboard - FIJO AL FINAL */
-.sidebar-settings {
+/* Pie: la marca y la configuración, fijo al final */
+.sidebar-footer {
   margin-top: auto;
-  margin-bottom: 20px;
+  padding-top: 10px;
+  border-top: 1px solid var(--jarvis-border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+.sidebar-brand {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--jarvis-text);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sidebar-brand:hover { background: var(--jarvis-hover); }
+.sidebar-brand-logo { width: 30px; height: 30px; }
+.sidebar-footer-settings {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--jarvis-muted);
+  cursor: pointer;
+}
+.sidebar-footer-settings:hover,
+.sidebar-footer-settings.active { background: var(--jarvis-hover); color: var(--jarvis-text); }
+.sidebar-brand:focus-visible,
+.sidebar-footer-settings:focus-visible { outline: 2px solid var(--jarvis-accent); outline-offset: 2px; }
 
 /* ================= */
 /* == ICONOS Y TEXTO == */
@@ -217,12 +238,12 @@
 }
 
 .chats-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--jarvis-border);
   border-radius: 3px;
 }
 
 .chats-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--jarvis-muted);
 }
 
 /* ==== Lista de chats ==== */
@@ -284,9 +305,9 @@
 }
 
 .sidebar-chat-item.active {
-  background-color: #222;
+  background-color: var(--jarvis-hover);
   color: var(--jarvis-text);
-  font-weight: bold;
+  font-weight: 600;
 }
 
 .sidebar-chat-item .label {
@@ -315,7 +336,7 @@
 
 .more-button:hover {
   color: var(--jarvis-text);
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--jarvis-hover);
   opacity: 1;
 }
 
@@ -365,9 +386,6 @@
     width: 240px;
   }
 
-  .sidebar-settings {
-    margin-bottom: 30px;
-  }
   .sidebar-overlay {
     z-index: 999;
   }

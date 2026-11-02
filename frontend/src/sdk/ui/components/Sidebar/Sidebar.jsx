@@ -6,7 +6,6 @@ import { FaChartBar, FaCog } from 'react-icons/fa';
 
 import { storageAdapter, USER_ID_KEY } from '../../../utils/storageAdapter';
 import { useJarvis } from '../../../hooks/useJarvis';
-import AnimatedJarvis from './utils/AnimatedJarvis';
 import ChatMenu from '../ChatMenu/ChatMenu';
 import Logger from '../../../utils/logger';
 // Servicios
@@ -184,15 +183,6 @@ const Sidebar = ({
         {isOpen && (
           <div className="sidebar-upper">
             <button
-              className={`sidebar-item jarvis ${isActive(homePath) ? 'active' : ''}`}
-              onClick={() => onNavigate(homePath)} // ← onNavigate
-            >
-              <div className="jarvis-logo">
-                <AnimatedJarvis />
-              </div>
-            </button>
-
-            <button
               className={`sidebar-item ${isActive(dashboardPath) ? 'active' : ''}`}
               onClick={() => onNavigate(dashboardPath)} // ← onNavigate
             >
@@ -246,20 +236,23 @@ const Sidebar = ({
           </div>
         )}
 
+        {/* Pie como el de Claude: la marca a la izquierda (lleva al inicio) y la configuración a la derecha */}
         {isOpen && (
-          <button
-            className={`sidebar-item sidebar-settings ${isActive(settingsPath) ? 'active' : ''}`}
-            onClick={() => {
-              if (typeof onNavigate === 'function') {
-                navigateToPath(settingsPath);
-              } else {
-                console.error("onNavigate no está definida en el Sidebar");
-              }
-            }} // ← onNavigate
-          >
-            <FaCog className="icon" />
-            <span className="label">Settings</span>
-          </button>
+          <div className="sidebar-footer">
+            <button className="sidebar-brand" onClick={() => onNavigate(homePath)} title="Inicio">
+              <img src="/arte/planeta.svg" alt="" className="sidebar-brand-logo art-dark" />
+              <img src="/arte/planeta-light.svg" alt="" className="sidebar-brand-logo art-light" />
+              <span>Jarvis</span>
+            </button>
+            <button
+              className={`sidebar-footer-settings ${isActive(settingsPath) ? 'active' : ''}`}
+              onClick={() => navigateToPath(settingsPath)}
+              aria-label="Configuración"
+              title="Configuración"
+            >
+              <FaCog size={17} />
+            </button>
+          </div>
         )}
       </div>
 

@@ -1,54 +1,38 @@
 /*src/sdk/components/ChatMenu*/
 .menu-contextual {
   position: fixed;
-  background-color: #222;
-  border-radius: 6px;
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.3); /* sombra moderna */
-  padding: 0.5rem;
+  background-color: var(--jarvis-surface);
+  border: 1px solid var(--jarvis-border);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+  padding: 4px;
   z-index: 1000;
   flex-direction: column;
-  gap: 0.25rem;
-  min-width: 130px;
+  gap: 2px;
+  min-width: 140px;
   transform: translateX(-20px); /* Desplaza hacia fuera del sidebar */
 }
 .menu-option {
   background-color: transparent;
   border: none;
-  color: white;
+  color: var(--jarvis-text);
   width: 100%;
   text-align: left;
-  padding: 8px 12px;
+  padding: 8px 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: background-color 0.3s ease;
-  font-size: 0.9rem;
-  border-radius: 6px;
+  font: inherit;
+  font-size: 0.88rem;
+  border-radius: 7px;
 }
-
-/* Hover default para opciones */
-.menu-option:hover {
-  background-color: #706b6b;
-}
+.menu-option:hover { background-color: var(--jarvis-hover); }
+.menu-option:focus-visible { outline: 2px solid var(--jarvis-accent); outline-offset: -2px; }
 
 /* Eliminar con color de advertencia */
-.delete-option {
-  color: #ff4d4d;
-  font-weight: bold;
-}
+.delete-option { color: #ef4444; font-weight: 600; }
+.delete-option:hover { background-color: color-mix(in srgb, #ef4444 12%, transparent); }
 
-.delete-option:hover {
-  background-color: #5c1a1a;
-}
-
-/* Íconos dentro de botones */
-.menu-option .icon {
-  font-size: 1.2rem;
-}
-
-/* Renombrar en gris */
-.rename-option {
-  color: #bbb;
-}
-
+.menu-option .icon { font-size: 1.1rem; }
+.rename-option { color: var(--jarvis-muted); }

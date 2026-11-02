@@ -22,6 +22,8 @@ import { streamLogger } from '../../../utils/logger';
 
 
 const md = new MarkdownIt({ html: false, linkify: true });
+// Jarvis no usa emojis (Gustavo lo pidió): se quitan también al mostrar, por si el modelo los manda igual
+const sinEmojis = (t) => t.replace(/(?![©®™])\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic})*️? ?/gu, '');
 
 // --- 1. NUEVO COMPONENTE INTERNO (Contiene toda la lógica de Hooks) ---
 const ChatContent = ({ isAuthenticated }) => {
@@ -85,7 +87,10 @@ const ChatContent = ({ isAuthenticated }) => {
   useEffect(() => {
     if (!cachedMessages || cachedMessages.length === 0) return;
     const formatted = cachedMessages.map(m => {
-      if (m.role === 'assistant') return { ...m, html: m.content ? md.render(m.content) : '<span class="typing-dots">...</span>' };
+      if (m.role === 'assistant') {
+        const text = sinEmojis(m.content || '');
+        return { ...m, content: text, html: text ? md.render(text) : '<span class="typing-dots">...</span>' };
+      }
       const safe = (m.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
       return { ...m, html: `<p>${safe}</p>` };
     });
@@ -186,7 +191,7 @@ const ChatContent = ({ isAuthenticated }) => {
             }
           }
           // 3. Enviamos el mensaje normalmente
-          const history = localMessages.filter((m) => m.content && !m.content.startsWith('⚠️')).map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
+          const history = localMessages.filter((m) => m.content && !m.error).map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
           handleNewMessage({ role: 'user', text: query }, context, img, tool, currentChatId, history);
         }}
         onContextExtracted={(entry) => setPendingContext(prev => [...prev, entry])}

@@ -9,74 +9,25 @@ import { LuCopy } from "react-icons/lu";
 import { FaArrowTurnDown, FaArrowTurnUp } from "react-icons/fa6";
 import { LiaThumbtackSolid } from "react-icons/lia";
 
-import { 
-  HiOutlineThumbUp, HiOutlineThumbDown, HiOutlineShare, 
-  HiOutlineDocumentDownload, HiOutlineDotsVertical 
-} from "react-icons/hi";
-import { VscRefresh } from "react-icons/vsc";
 import './MessageList.css';
 
+// Solo "Copiar": me gusta, no me gusta, rehacer, compartir y exportar eran botones sin función
 const AssistantActions = ({ content }) => {
   const [copied, setCopied] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef(null);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  
-  // --- Lógica para cerrar al hacer clic fuera ---
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowMenu(false);
-      }
-    };
-
-    if (showMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showMenu]);
 
   return (
     <div className="assistant-actions-toolbar">
-      {/* Botones principales */}
-      <button className="toolbar-btn" title="Me gusta"><HiOutlineThumbUp size={18} /></button>
-      <button className="toolbar-btn" title="No me gusta"><HiOutlineThumbDown size={18} /></button>
-      <button className="toolbar-btn" title="Rehacer"><VscRefresh size={18} /></button>
-      <button className="toolbar-btn" onClick={handleCopy} title="Copiar">
+      <button className="toolbar-btn" onClick={handleCopy} title={copied ? 'Copiado' : 'Copiar'} aria-label="Copiar respuesta">
         <LuCopy size={16} color={copied ? "#4ade80" : "inherit"} />
       </button>
-
-      {/* Menú de 3 puntos */}
-      <div className="toolbar-menu-wrapper" ref={menuRef}>
-        <button className="toolbar-btn" onClick={() => setShowMenu(!showMenu)}>
-          <HiOutlineDotsVertical size={18} />
-        </button>
-        
-        {showMenu && (
-          <div className="toolbar-dropdown-menu">
-            <button className="assistant-menu-item"><HiOutlineShare size={14} /> Compartir</button>
-            <button className="assistant-menu-item"><HiOutlineDocumentDownload size={14} /> Exportar</button>
-          </div>
-        )}
-      </div>
     </div>
   );
-};
-
-// Función para destacar búsqueda en texto
-const highlightSearchTerm = (text, searchTerm) => {
-  if (!searchTerm || searchTerm.trim() === '') return text;
-  
-  const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-  return text.replace(regex, '<mark class="search-highlight">$1</mark>');
 };
 
 const UserMessageWrapper = ({ content, children, isHighlighted }) => {
@@ -174,61 +125,43 @@ const MessageList = ({ messages = [], onLoadMore, hasMore, searchTerm = '' }) =>
       stable: msg.id ? true : msg.stable 
     }));
 
-  // Manejo de errores mejorado
+  // El HTML del mensaje (markdown ya renderizado) en bloques: el texto seguido va en UN contenedor saneado,
+  // y cada bloque de código en su CodeBlock. Antes cada párrafo era un div aparte.
   const renderContent = (msg, keyPrefix) => {
     try {
       const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = msg.html;
+      tempDiv.innerHTML = DOMPurify.sanitize(msg.html || '');
+      const parts = [];
+      let buffer = '';
+      const flush = () => {
+        if (!buffer.trim()) { buffer = ''; return; }
+        parts.push(<div key={`${keyPrefix}-${parts.length}`} className="message-html" dangerouslySetInnerHTML={{ __html: buffer }} />);
+        buffer = '';
+      };
 
-      return Array.from(tempDiv.childNodes).map((node, i) => {
-        const key = `${keyPrefix}-${i}`;
-
-        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'PRE') {
-          const codeEl = node.querySelector('code');
-          if (!codeEl) {
-            return (
-              <div
-                key={key}
-                className="message-html"
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(node.outerHTML || '') }}
-              />
-            );
-          }
-
-          const content = codeEl.textContent.trim();
-          const isProbablyInline = content.length < 30 && !content.includes('\n');
-          if (isProbablyInline) {
-            return <code key={key} className="inline-fix">{content}</code>;
-          }
-
-          const langClass = codeEl.getAttribute('class') || '';
-          let language = langClass.replace('language-', '') || 'plaintext';
-
-          if (!hljs.getLanguage(language)) language = 'plaintext';
-
-          const highlighted = msg.stable
-            ? content
-            : hljs.highlight(content, { language }).value;
-
-          return (
-            <CodeBlock
-              key={key}
-              code={highlighted}
-              language={language}
-              isHtml={!msg.stable}
-              stable={msg.stable ?? true}
-            />
-          );
+      for (const node of Array.from(tempDiv.childNodes)) {
+        const codeEl = node.nodeType === Node.ELEMENT_NODE && node.tagName === 'PRE' ? node.querySelector('code') : null;
+        if (!codeEl) {
+          buffer += node.nodeType === Node.ELEMENT_NODE ? node.outerHTML : (node.textContent || '');
+          continue;
         }
-
-        return (
-          <div
-            key={key}
-            className="message-html"
-            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(node.outerHTML || '') }}
+        flush();
+        const content = codeEl.textContent.trim();
+        let language = (codeEl.getAttribute('class') || '').replace('language-', '') || 'plaintext';
+        if (!hljs.getLanguage(language)) language = 'plaintext';
+        const highlighted = msg.stable ? content : hljs.highlight(content, { language }).value;
+        parts.push(
+          <CodeBlock
+            key={`${keyPrefix}-${parts.length}`}
+            code={highlighted}
+            language={language}
+            isHtml={!msg.stable}
+            stable={msg.stable ?? true}
           />
         );
-      });
+      }
+      flush();
+      return parts;
     } catch (error) {
       console.error('Error rendering message content:', error);
       return (
@@ -268,8 +201,9 @@ const MessageList = ({ messages = [], onLoadMore, hasMore, searchTerm = '' }) =>
                 </UserMessageWrapper>
               ) : (
                 <div className="assistant-message-wrapper">
+                  {/* Antes se insertaba msg.content como HTML crudo: sin markdown y sin sanear */}
                   <div className="message-bubble">
-                    <div dangerouslySetInnerHTML={{ __html: highlightSearchTerm(msg.content, searchTerm) }} />
+                    {renderContent(msg, msg.id || index)}
                   </div>
                   
                   {/* BARRA EXTERNA: Solo si el mensaje es estable */}
