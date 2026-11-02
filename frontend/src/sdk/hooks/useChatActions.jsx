@@ -16,7 +16,7 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
     }
   }, []);
 
-  const handleNewMessage = useCallback(async (message, contextFromFile = '', image = null, tool = '', overrideChatId = null) => {
+  const handleNewMessage = useCallback(async (message, contextFromFile = '', image = null, tool = '', overrideChatId = null, history = []) => {
     if (message.role !== 'user') return;
     
     const idToSend = overrideChatId || activeChatId;
@@ -77,7 +77,7 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
       let res;
       if (!isAuthenticated) {
         // --- FLUJO ANÓNIMO --- (el tope de mensajes lo lleva el servidor, por IP)
-        res = await sendAnonymousMessage(fullPrompt, client);
+        res = await sendAnonymousMessage(fullPrompt, client, history);
 
         const reply = res.result || res.error || "Sin respuesta";
         updateMessageInCache(jarvisTempId, { content: reply, html: md.render(reply), stable: true }, idToSend);

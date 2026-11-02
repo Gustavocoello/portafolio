@@ -185,7 +185,8 @@ const ChatContent = ({ isAuthenticated }) => {
             }
           }
           // 3. Enviamos el mensaje normalmente
-          handleNewMessage({ role: 'user', text: query }, context, img, tool, currentChatId);
+          const history = localMessages.filter((m) => m.content && !m.content.startsWith('⚠️')).map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
+          handleNewMessage({ role: 'user', text: query }, context, img, tool, currentChatId, history);
         }}
         onContextExtracted={(entry) => setPendingContext(prev => [...prev, entry])}
         onClearContext={() => setPendingContext([])}

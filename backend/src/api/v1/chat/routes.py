@@ -41,6 +41,7 @@ search_router = APIRouter()
 
 class SearchPromptRequest(BaseModel):
     prompt: str
+    history: list[dict] = []  # turnos previos del chat anónimo (los manda el navegador; free_tier los limpia)
 
 class CreateChatRequest(BaseModel):
     title: Optional[str] = "Sin título"
@@ -68,7 +69,7 @@ def handle_search_prompt(request: Request, payload: SearchPromptRequest):
         )
 
     try:
-        result = generate_prompt({"description": payload.prompt})
+        result = generate_prompt({"description": payload.prompt}, payload.history)
         return {
             "result": result,
             "remaining": max(0, VISITOR_LIMIT - count)
