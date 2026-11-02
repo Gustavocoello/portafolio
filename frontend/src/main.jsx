@@ -1,21 +1,27 @@
 // frontend/src/main.jsx
+
+if (typeof global === 'undefined') {
+  window.global = window;
+}
+if (typeof window.require === 'undefined') {
+  window.require = (path) => {
+    if (path === 'react') return React;
+    if (path === 'react-dom') return ReactDOM;
+    throw new Error(`Could not resolve require("${path}")`);
+  };
+}
+
 import App from './App';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from '@/features/auth/components/context/AuthContext';
-import { injectSpeedInsights } from '@vercel/speed-insights';
+import { AuthProvider } from '@/core/auth/AuthContext';
 import { ClerkProvider } from '@clerk/clerk-react'
 import './styles/index.css';
 
 // Obtener la clave pública de Clerk desde las variables de entorno
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-// Inicializar Vercel Speed Insights
-if (import.meta.env.VITE_DEBUG === 'true') {
-  injectSpeedInsights();
-}
 
 // Aplica el tema antes de renderizar
 const preferredTheme = localStorage.getItem('preferred-theme') || 'system';

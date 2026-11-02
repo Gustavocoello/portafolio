@@ -25,7 +25,6 @@ backend_dir = current_dir.parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from utils.time_helper import get_now
-from utils.Keep_alive_mcp import keep_alive_mcp
 
 load_dotenv()
 
@@ -264,5 +263,4 @@ async def notion_delete_block(context: Context, block_id: str):
 
 
 if __name__ == "__main__":
-    keep_alive_mcp()
     uvicorn.run(app, host="0.0.0.0", port=8002)

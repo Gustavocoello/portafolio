@@ -61,7 +61,8 @@ dist-ssr
 /backend/.env
 start_worker.bat
 worker_invisible.vbs
-espacio_trabajo/
+work_space/
+outputs/
 __pycache__/
 /__pycache__
 __pycache__/
@@ -69,6 +70,7 @@ __pycache__/
 /Extras
 Extras/
 %USERPROFILE%/
+\.jarvis
 # Eliminamos los archivos de logs
 logs/
 functions/logs/
@@ -78,3 +80,8 @@ functions/logs/
 credentials/
 *backup.sql
 *.sql
+openspec/
+
+# Ignorar archivos compilados de Python
+*.pyc
+espacio_trabajo/

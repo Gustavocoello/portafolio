@@ -6,6 +6,7 @@ import pytz
 import uvicorn
 import json as _json
 from pathlib import Path
+from dataclasses import asdict
 from contextvars import ContextVar
 from fastmcp import FastMCP, Context
 from starlette.requests import Request
@@ -27,7 +28,6 @@ from utils.models import Event
 from utils.time_helper import get_now
 from sources.google_calendar import GoogleCalendarConnector
 from sources.natural_parser import parse_natural_language_to_event
-from utils.Keep_alive_mcp import keep_alive_mcp
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -218,6 +218,18 @@ def _extract_id(value: str) -> str:
         except Exception:
             pass
     return value
+
+def _event_to_dict(event) -> dict:
+    """Serializa un Dataclass Event a dict convirtiendo las fechas a texto (ISO 8601)."""
+    event_dict = asdict(event)
+    
+    # Asegurarnos de que las fechas sean strings para evitar errores de JSON
+    if event_dict.get('start_time'):
+        event_dict['start_time'] = event_dict['start_time'].isoformat()
+    if event_dict.get('end_time'):
+        event_dict['end_time'] = event_dict['end_time'].isoformat()
+        
+    return event_dict
 
 # =================================================================
 #                         TOOLS DE GOOGLE CALENDAR
@@ -427,7 +439,8 @@ async def eventos_por_rango(context: Context, calendar_id: str, start_date: str,
     start = datetime.fromisoformat(start_date)
     end = datetime.fromisoformat(end_date)
     events = gcal.get_events_by_range(calendar_id, start, end)
-    return [event.dict() for event in events]
+    
+    return [_event_to_dict(event) for event in events]
 
 
 @mcp.tool(name="eventos_todos_calendarios_rango")
@@ -441,7 +454,8 @@ async def eventos_todos_calendarios_rango(context: Context, start_date: str, end
     start = datetime.fromisoformat(start_date)
     end = datetime.fromisoformat(end_date)
     events = gcal.fetch_events_by_range(start, end)
-    return [event.dict() for event in events]
+    
+    return [_event_to_dict(event) for event in events]
 
 # ---------------- ACTUALIZAR Y ELIMINAR EVENTOS ----------------
 
@@ -466,7 +480,6 @@ async def eliminar_evento(context: Context, calendar_id: str, event_id: str) -> 
 
 #""" # Para utilizarlo en local
 if __name__ == "__main__":
-        keep_alive_mcp()
         uvicorn.run(
             app,
             host="0.0.0.0",

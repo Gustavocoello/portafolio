@@ -1,16 +1,18 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import useCurrentUser from "@/features/auth/components/context/useCurrentUser";
-import Navbar from "@/components/layout/Navbar/Navbar";
-import AudioWaves from "@/components/ui/Animated/AudioWaves";
-import Footer from "@/components/layout/Footer/Footer.jsx";
-import { FaReact, FaPython, FaNodeJs, FaDatabase, FaDocker, FaGitAlt, FaCodepen, FaUserShield, FaLinkedin, FaGithub } from "react-icons/fa";
-import { SiMongodb, SiOpenai, SiJavascript, SiGnubash} from "react-icons/si";
+import useCurrentUser from "../../core/auth/useCurrentUser";
+import Navbar from "@/shared/ui/layout/Navbar/Navbar";
+import AudioWaves from "@/projects/voice-sphere/animation/AudioWaves";
+import Footer from "@/shared/ui/layout/Footer/Footer.jsx";
+import { storageAdapter, USER_ID_KEY } from "@/shared/utils/storageAdapter";
+// ICONS
+import { FaCodepen, FaUserShield, FaLinkedin, FaGithub } from "react-icons/fa";
+import { SiGnubash } from "react-icons/si";
+import { RiOpenaiFill } from "react-icons/ri";
 import { BsFillMenuButtonWideFill } from "react-icons/bs";
 import { GiBreakingChain } from "react-icons/gi";
 import { IoMdChatbubbles } from "react-icons/io";
 import { BsTerminalSplit } from "react-icons/bs";
-
 import "./LandingPage.css";
 
 const LandingPage = () => {
@@ -54,15 +56,26 @@ const LandingPage = () => {
 
   // Navegación
   const goToChat = () => {
-    if (user?.id) {
-      navigate(`/c/${user.id}`);
-    } else {
-      navigate("/chat");
+    const dbUserId = storageAdapter.getItem(USER_ID_KEY);
+    // 1. Si Clerk dice que hay usuario
+    if (user) {
+      if (dbUserId) {
+        // Tenemos el ID, vamos al chat privado
+        navigate(`/chat/${dbUserId}`);
+      } else {
+        // Está logueado pero falta el ID en storage, 
+        // vamos a /chat para que useSyncUser lo capture y redirija
+        navigate("/chat");
+      }
+      return;
     }
+
+    // 2. Si no hay usuario en Clerk, es invitado
+    navigate("/chat");
   };
 
   const goToJarvis = () => {
-    navigate("/jarvis");
+    navigate("/project-tars");
   };
 
   useEffect(() => {
@@ -102,16 +115,18 @@ const LandingPage = () => {
   }, [starsVisible]);
 
   // Lista de tecnologías para la cinta
+  // Logos oficiales a color de Devicon (MIT). OpenAI no está ahí y su logo oficial es monocromo.
+  const DEVICON = "https://cdn.jsdelivr.net/gh/devicons/devicon@v2.17.0/icons";
   const technologies = [
-  { icon: <FaReact /> },       // React
-  { icon: <FaPython /> },      // Python
-  { icon: <SiJavascript /> },  // JavaScript
-  { icon: <FaNodeJs /> },      // Node.js
-  { icon: <FaDatabase /> },    // SQL
-  { icon: <SiMongodb /> },     // MongoDB
-  { icon: <SiOpenai /> },      // OpenAI
-  { icon: <FaDocker /> },      // Docker
-  { icon: <FaGitAlt /> },      // Git
+  { name: "React",      src: `${DEVICON}/react/react-original.svg` },
+  { name: "Python",     src: `${DEVICON}/python/python-original.svg` },
+  { name: "JavaScript", src: `${DEVICON}/javascript/javascript-original.svg` },
+  { name: "Node.js",    src: `${DEVICON}/nodejs/nodejs-original.svg` },
+  { name: "PostgreSQL", src: `${DEVICON}/postgresql/postgresql-original.svg` },
+  { name: "MongoDB",    src: `${DEVICON}/mongodb/mongodb-original.svg` },
+  { name: "OpenAI",     icon: <RiOpenaiFill /> },
+  { name: "Docker",     src: `${DEVICON}/docker/docker-original.svg` },
+  { name: "Git",        src: `${DEVICON}/git/git-original.svg` },
 ];
 
   // SVG minimalista
@@ -1891,7 +1906,7 @@ const LandingPage = () => {
 
         <div className="right-column">
           <div className={`text-content ${isLoaded ? "loaded" : ""}`}>
-            <h1 className="main-title">Welcome to my AI Assistant</h1>
+            <h1 className="main-title">Welcome to my Portafolio</h1>
             <p className="subtitle-small">
               Made with hard work and dedication, by Gustavo Coello
             </p>
@@ -1915,7 +1930,6 @@ const LandingPage = () => {
             <hr className="service-divider" />
             <h3 className="service-name">Jarvis</h3>
           </div>
-          {/* <JarvisCard onClick={goToChat} /> Para usar la animacion mas adelante*/}
           {/*Tars*/}
           <div className="service-card" onClick={goToJarvis}>
             <div className="service-icon">
@@ -1955,11 +1969,11 @@ const LandingPage = () => {
             <div className="text-content loaded">
               <h1 className="main-title"> Talk to TARS like in Interstellar </h1>
               <p className="subtitle">
-                Developing a voice-interactive AI assistant using OpenAI's technology
+                A real-time voice assistant with the personality of TARS. It speaks Spanish and uses the same tools
+                as Jarvis: email, calendar, Notion, GitHub and web search.
               </p>
-              {/* Nuevo párrafo */}
               <p className="subtitle-under-development">
-                Under developing
+                Private project: request a demo from its page
               </p>
             </div>
           </div>
@@ -1971,16 +1985,18 @@ const LandingPage = () => {
           <h3 className="tech-title">Technologies Used</h3>
           <div className="tech-scroll-container">
             <div className="tech-scroll">
-              {technologies.map((tech, index) => (
-                <div key={`first-${index}`} className="tech-item">
-                  <span className="tech-icon">{tech.icon}</span>
-                </div>
-              ))}
-              {technologies.map((tech, index) => (
-                <div key={`second-${index}`} className="tech-item">
-                  <span className="tech-icon">{tech.icon}</span>
-                </div>
-              ))}
+              {/* 6 copias = 2 mitades idénticas que cubren pantallas anchas; al llegar al -50% la 2da mitad ocupa el lugar de la 1ra y el loop no se nota */}
+              {[0, 1, 2, 3, 4, 5].map((copy) =>
+                technologies.map((tech) => (
+                  <div key={`${copy}-${tech.name}`} className="tech-item" title={tech.name} aria-hidden={copy > 0 || undefined}>
+                    {tech.src ? (
+                      <img className="tech-logo" src={tech.src} alt={copy === 0 ? tech.name : ""} width="48" height="48" loading="lazy" draggable="false" />
+                    ) : (
+                      <span className="tech-icon" role={copy === 0 ? "img" : undefined} aria-label={copy === 0 ? tech.name : undefined}>{tech.icon}</span>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </section>

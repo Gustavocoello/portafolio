@@ -1,20 +1,42 @@
-name: Deploy Automatico a Lubuntu Local
+name: Probar y desplegar
 
 on:
   push:
-    branches:
-      - master  # O el nombre de la rama principal que uses (a veces es 'master')
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  deploy:
-    runs-on: self-hosted  # ¡Aquí está la línea que te decía GitHub!
-
+  probar:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout del código
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Pruebas del backend
+        working-directory: backend
+        # La URL de la base no se usa (las pruebas no conectan), pero los modelos la piden al importar
+        env:
+          DATABASE_URL: postgresql+psycopg2://x:x@localhost:1/x
+        run: PYTHONPATH=. uv run --no-project --python 3.11 --with pytest --with openai --with langchain-openai --with langchain-core --with python-dotenv --with redis --with fastapi --with pyjwt --with cryptography --with requests --with sqlalchemy --with psycopg2-binary --with pgvector --with pytz pytest -q tests
 
-      - name: Actualizar y Reiniciar Backend Docker
+  desplegar:
+    needs: probar
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    # Runner propio registrado en previseguros-server con la etiqueta portafolio.
+    runs-on: [self-hosted, portafolio]
+    env:
+      ENV_FILE: /home/previserver/portafolio/.env
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir y levantar
+        run: docker compose -p portafolio --env-file "$ENV_FILE" up -d --build --remove-orphans
+      - name: Comprobar que responde
         run: |
-          cd ~/mi_servidor
-          git pull origin master
-          docker compose up -d --build backend
+          for i in $(seq 1 45); do
+            curl -fsS http://127.0.0.1:8096/db-health && exit 0
+            sleep 2
+          done
+          docker compose -p portafolio --env-file "$ENV_FILE" logs --tail 80
+          exit 1
+      - name: Limpiar imágenes viejas
+        run: docker image prune -f

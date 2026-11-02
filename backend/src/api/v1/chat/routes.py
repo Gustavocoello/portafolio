@@ -1,506 +1,373 @@
-import json
-import asyncio
+import re
 import os
-import threading
-from httpx import get
-from extensions import db
-from datetime import datetime
-from werkzeug.utils import secure_filename
-from src.services.providers.utils import generate_prompt, extract_text_from_file, analyze_image_with_azure, can_upload_image
-from src.services.core.llm_router import completion,completion_stream
-from src.database.models.models import Chat, Message, MemoryType, UserMemory, Document, UserToken
-from src.services.integrations.extensions.onedrive_service import upload_to_onedrive, get_user_onedrive_token
-from src.config.logging_config import get_logger
-from src.services.memory.service import get_user_memory, save_memory
-from src.services.memory.utils import build_memory_context, extract_memory_from_text, calculate_priority, classify_memory
-from flask import Blueprint, jsonify, Response, request, stream_with_context, session, copy_current_request_context, g
-from src.mcps.client.client_manager import mcp_manager
-from src.services.auth.clerk.clerk_middleware import clerk_required
-from src.mcps.client.utils.utils import safe_serialize_call_result
-from src.services.auth.utils.token_crypto import encrypt_token
-from src.services.auth.mcp.mcp_jwt import generate_mcp_jwt
+import json
+from io import BytesIO
+from collections import defaultdict
+from typing import Optional, Dict, Any
+from uuid import UUID
+from queue import Queue, Empty
+from sqlalchemy import select
+# FastAPI
+from fastapi import APIRouter, Depends, Request, BackgroundTasks, UploadFile, File, HTTPException, status, Query
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
+from src.core.logging import get_logger
+from src.core.time_helper import get_now
+from src.services.cache.redis_cache import ChatCache
+from src.services.cache.redis_client import redis_client
+from src.database.settings.connection import SessionLocal, get_db
+from src.services.cache.redis_sidebar import SidebarCache
+from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, visitor_ip, VISITOR_LIMIT
+from src.database.models.models import Chat, Message, Document
+from src.services.auth.auth.auth_middleware import get_current_user, authenticate
+from src.services.integrations.onedrive.onedrive_service import upload_to_onedrive, get_user_onedrive_token
+from src.services.integrations.azure.azure_vision import analyze_image_with_azure
+from src.services.integrations.microsoft.markitdown_extractor import extract_text_from_file
+
+# -- Logger --
 logger = get_logger('routes')
+# -- Event Queues (una por usuario: cada quien solo ve sus propios eventos) --
+# shortcut: colas en memoria del proceso, válido con un solo worker de uvicorn; pasar a Redis pub/sub si se escala a varios
+event_queues = defaultdict(Queue)
 
-mcp_client = mcp_manager
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+DEFAULT_TITLES = (None, "", "Sin titulo", "Sin título")
+
+## -------------- Mensajes de la IA con memoria -----------
+search_router = APIRouter()
+
+class SearchPromptRequest(BaseModel):
+    prompt: str
+
+class CreateChatRequest(BaseModel):
+    title: Optional[str] = "Sin título"
+    
+class UpdateTitleRequest(BaseModel):
+    title: str
+
+# Función utilitaria para reemplazar a werkzeug.utils.secure_filename
+def secure_filename(filename: str) -> str:
+    # Remueve caracteres peligrosos del nombre del archivo
+    return re.sub(r'[^a-zA-Z0-9_\.-]', '_', os.path.basename(filename))
 
 ## ----------- Mensajes de la IA sin memoria --------------
-""" Create a blueprint for search API """
-search_bp = Blueprint('search', __name__, url_prefix='/api/search')
+@search_router.post("/prompt")
+def handle_search_prompt(request: Request, payload: SearchPromptRequest):
+    # El límite vive en el servidor (por IP): una cookie la borra cualquiera
+    ip = visitor_ip(request)
+    count = visitor_message_count(f"ip:{ip}")
+    if count is None:
+        raise HTTPException(status_code=503, detail="Modo de prueba no disponible por ahora.")
+    if count > VISITOR_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba.", "login_required": True}
+        )
 
-@search_bp.route("/prompt", methods=["POST"])
-def handle_search_prompt():
-    # Limitar a 5 intentos por sesión para usuarios anónimos
-    counter = session.get('anon_prompt_count', 0)
-
-    if counter >= 5:
-        return jsonify({
-            "error": "Has alcanzado el límite de 5 mensajes de prueba.",
-            "login_required": True
-        }), 403
-
-    session['anon_prompt_count'] = counter + 1
-    logger.debug(f'print:{counter}')
-    print("BODY RECIBIDO:", request.json)
     try:
-        data = request.json
-
-        if not data or 'prompt' not in data:
-            logger.error("No prompt received in request")
-            return jsonify({"error": "Se requiere un prompt"}), 400
-
-        logger.debug(f"Search prompt recibido: {data['prompt']}")
-        
-        result = generate_prompt({"description": data['prompt']})
-
-        if result == "Todos los servicios de IA no estan disponibles actualmente.":
-            return jsonify({"error": result}), 503
-        
-        return jsonify({
+        result = generate_prompt({"description": payload.prompt})
+        return {
             "result": result,
-            "remaining": max(0, 5 - session['anon_prompt_count'])
-        })
-
+            "remaining": max(0, VISITOR_LIMIT - count)
+        }
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Error: IA no disponible")
     except Exception as e:
-        error_msg = f"Error al procesar prompt: {str(e)}"
-        logger.exception(error_msg)
-        return jsonify({"error": error_msg}), 500
-
-
-## -------------- Mensajes de la IA con memoria --------------
-chat_bp = Blueprint('chat', __name__, url_prefix='/api/chat')
-
-MAX_RAW   = 10
-MAX_TOTAL = 40
-
-# helpers (build_payload, summarize_and_trim) …
-# --------------- Helpers ----------------
-def build_payload(chat, recent, user_text, memory_context=None, hidden_context=None, mcp_context=None):
-    messages = [] 
-    if memory_context:
-        messages.append({
-            "role": "system",
-            "content": f"Here is helpful user information:\n{memory_context}"
-        })
-
-    if hidden_context:
-        messages.append({
-            "role": "system",
-            "content": (
-                "You will now receive text extracted via OCR from an image or "
-                "content from an uploaded file. This is *textual* information only, "
-                "not a visual. Use this information to respond to the user's question. "
-                "Do not mention inability to see images."
-            )
-        })
-        messages.append({
-            "role": "system",
-            "content": hidden_context
-        })
-    
-    if mcp_context:
-        messages.append({
-            "role": "system",
-            "content": (
-                "You have received structured data from a tool (MCP). "
-                "Use this information to provide an accurate answer to the user. "
-                "Do not mention the tool explicitly."
-            )
-        })
-        messages.append({"role": "system", "content": mcp_context})
-
-    if chat.summary:
-        messages.append({
-            "role": "system",
-            "content": f"Conversation summary so far:\n{chat.summary}"
-        })
-
-    for m in recent:
-        messages.append({"role": m.role, "content": m.content})
-
-    messages.append({"role": "user", "content": user_text})
-    return messages
-
-def summarize_and_trim(chat):
-    all_msgs = (Message.query
-                .filter_by(chat_id=chat.id)
-                .order_by(Message.created_at)
-                .all())
-    if len(all_msgs) <= MAX_TOTAL:
-        return
-
-    to_summarize = all_msgs[:-MAX_RAW]         # todo menos los 10 últimos
-    summary_prompt = [
-        {"role": "system",
-         "content": "Resume brevemente la siguiente conversación:"},
-        *[{"role": m.role, "content": m.content} for m in to_summarize]
-    ]
-    new_summary = completion(summary_prompt) # se cambio a completion
-    logger.info(f"Nuevo resumen: {new_summary}")
-
-    chat.summary = ((chat.summary or "") + "\n" + new_summary).strip()
-    db.session.add(chat)
-    # borrar mensajes resumidos
-    ids = [m.id for m in to_summarize]
-    Message.query.filter(Message.id.in_(ids)).delete(synchronize_session=False)
-    db.session.commit()
+        logger.exception(f"Error al procesar prompt: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ------------- route principal -------------
+chat_router = APIRouter()
 
+#--------------- EVENTS QUEUE ---------------
+@chat_router.get("/events")
+def events(
+    token: str = Query(..., description="EventSource no puede mandar headers: el token va en la URL"),
+    app_id: str = Query("jarvis-default"),
+):
+    user_id = str(authenticate(token, app_id)["user_id"])
+    queue = event_queues[user_id]
+
+    async def stream():
+        while True:
+            try:
+                # Usamos run_in_threadpool porque Queue.get() de Python bloquea el hilo
+                event = await run_in_threadpool(queue.get, timeout=20)
+                yield f"data: {json.dumps(event)}\n\n"
+            except Empty:
+                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+            except Exception as e:
+                logger.error(f"Error en stream SSE: {e}")
+                break
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 # ----------------- GET ---------------------
-@chat_bp.route('', methods=['GET'], strict_slashes=False)
-@clerk_required
-def get_all_chats():
-    chats = Chat.query.filter_by(user_id=g.user_id).order_by(Chat.updated_at.desc()).all()
-    return jsonify([{
-        "id": chat.id,
-        "created_at": chat.created_at.isoformat(),
-        "updated_at": chat.updated_at.isoformat() if chat.updated_at else None,
-        "summary": chat.summary,
-        "title": chat.title if chat.title else "Sin título"
-    } for chat in chats])
+# ---- Obtiene todos los chats ----
+@chat_router.get("")
+def get_all_chats(
+    db: Session = Depends(get_db), 
+    user: dict = Depends(get_current_user)
+):
+    try:
+        chats = SidebarCache.get_chats(
+            user_id=user["user_id"], 
+            app_id=user["app_id"], 
+            db_session=db
+        )
+        return chats
+    except Exception as e:
+        logger.exception("Error al obtener chats")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+# ---- Obtiene mensajes recientes de un chat específico ----
+@chat_router.get("/{chat_id}/messages/recent")
+def get_recent_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    owned = db.query(Chat.id).filter(
+        Chat.id == chat_id, Chat.user_id == user["user_id"], Chat.app_id == user["app_id"]
+    ).first()
+    if not owned:
+        raise HTTPException(status_code=404, detail='Chat no encontrado o acceso denegado')
+    try:
+        messages = ChatCache.get_messages(str(chat_id), db_session=db)
+        return messages
+    except Exception as e:
+        logger.exception(f"Error en mensajes recientes de {chat_id}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@chat_bp.route('/<chat_id>/messages', methods=['GET'])
-@clerk_required
-def get_chat_messages(chat_id):
-    chat = Chat.query.get(chat_id)
-    if not chat or chat.user_id != g.user_id:
-        return jsonify({'error': 'Acceso denegado'}), 403
-    messages = (Message.query
-                .filter_by(chat_id=chat_id)
-                .order_by(Message.created_at.asc())
-                .all())
-    return jsonify([{
-        "id": msg.id,
-        "role": msg.role,
-        "content": msg.content,
-        "created_at": msg.created_at.isoformat()
-    } for msg in messages])
+# ---- Obtiene todos los mensajes de un chat específico ----
+@chat_router.get("/{chat_id}/messages")
+def get_chat_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    try:
+        chat = db.query(Chat).filter(
+            Chat.id == chat_id, 
+            Chat.user_id == user["user_id"],
+            Chat.app_id == user["app_id"]
+        ).first()
+        
+        if not chat:
+            raise HTTPException(status_code=404, detail='Chat no encontrado o acceso denegado')
+        
+        stmt = (select(Message)
+                .where(Message.chat_id == chat_id, Message.role.in_(LLM_ROLES))
+                .order_by(Message.created_at.asc()))
+        messages = db.execute(stmt).scalars().all()
+        
+        return [{
+            "id": msg.id,
+            "role": msg.role,
+            "content": msg.content,
+            "created_at": msg.created_at.isoformat()
+        } for msg in messages]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error al obtener mensajes del chat {chat_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
     
 # ----------------- DELETE -------------------
     
-@chat_bp.route('/<chat_id>', methods=['DELETE'])
-@clerk_required
-def delete_chat(chat_id):
-    chat = Chat.query.get(chat_id)
-    if not chat or chat.user_id != g.user_id:
-        return jsonify({"error": "Acceso denegado"}), 403
-
-    db.session.delete(chat)
-    db.session.commit()
-    return jsonify({"message": "Chat eliminado correctamente"}), 200
-
-
-# ----------------- POST ---------------------    
-    
-@chat_bp.route('', methods=['POST'], strict_slashes=False)
-@clerk_required
-def create_chat():
-    if not g.user_id:
-        return jsonify({"error": "Usuario no autenticado o ID inválido"}), 401
-
+@chat_router.delete("/{chat_id}")
+def delete_chat(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
     try:
-        chat = Chat(user_id=g.user_id)
-        db.session.add(chat)
-        db.session.commit()
+        # 1. BUSCAMOS EL CHAT
+        chat = db.query(Chat).filter(
+            Chat.id == chat_id, 
+            Chat.user_id == user["user_id"],
+            Chat.app_id == user["app_id"]
+        ).first()
         
-        print(f"[DEBUG] user_id: {g.user_id}")
-        return jsonify({
-            "id": chat.id,
-            "created_at": chat.created_at.isoformat()
-        }), 201
+        # 2. VALIDACIÓN
+        if not chat:
+            # HTTPException es el equivalente a jsonify() + status code en FastAPI
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Chat no encontrado o acceso denegado"
+            )
+
+        # 3. ACCIÓN
+        db.delete(chat)
+        db.commit()
+        
+        # === AVISAR A REDIS ===
+        SidebarCache.invalidate_user(user["user_id"], user["app_id"])
+        logger.info(f"[Redis] Sidebar invalidado por eliminación de chat: {chat_id}")
+        
+        return {"message": "Chat eliminado correctamente"}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        # Si es un error inesperado (DB caída, error de sintaxis, etc.)
+        db.rollback()
+        logger.exception("Error al eliminar chat")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=str(e)
+        )
 
 
-@chat_bp.route('/<chat_id>/message', methods=['POST'], strict_slashes=False)
-@clerk_required
-def send_message(chat_id):
-    chat = Chat.query.get(chat_id)
-
-    if not chat:
-        # Si no existe, crearlo y asignarlo al usuario actual
-        chat = Chat(id=chat_id, user_id=g.user_id)
-        db.session.add(chat)
-    elif chat.user_id != g.user_id:
-        return jsonify({"error": "Acceso denegado"}), 403
-    
-    user_text = (request.json.get("text") or "").strip()
-    if not user_text:
-        return jsonify({"error": "Texto vacío"}), 400
-
-    print("BODY RECIBIDO:", request.json)
-
+# ----------------- POST ---------------------  
+  
+# ------------ POST (crear chat) ------------- 
+       
+@chat_router.post("", status_code=status.HTTP_201_CREATED)
+def create_chat(
+    payload: CreateChatRequest, 
+    db: Session = Depends(get_db), 
+    user: dict = Depends(get_current_user)
+):
     try:
-        chat = Chat.query.get(chat_id)
-        if chat is None:
-            chat = Chat(id=chat_id)
-            db.session.add(chat)
+        # Validación de seguridad defensiva
+        if not user or not user.get("user_id"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Usuario no autenticado"
+            )
 
-        chat.updated_at = datetime.utcnow()
-        
-
-        user_message = Message(chat_id=chat.id, role="user", content=user_text)
-        db.session.add(user_message)
-
-        if not chat.title:
-            palabras = user_text.split()
-            resumen = " ".join(palabras[:10]) + ("..." if len(palabras) > 10 else "")
-            chat.title = resumen
-
-        db.session.commit()  # 🔑
-
-        recent = (
-            Message.query
-            .filter(Message.chat_id == chat.id, Message.role != "context")
-            .order_by(Message.created_at.desc())
-            .limit(MAX_RAW)
-            .all()[::-1]
+        # 3. CREACIÓN DEL CHAT
+        new_chat = Chat(
+            user_id=user["user_id"], 
+            app_id=user["app_id"],
+            title=payload.title
         )
         
-        memories = get_user_memory(chat_id, memory_type=MemoryType.LONG_TERM)
-        memory_context = build_memory_context(memories)
+        db.add(new_chat)
+        db.commit()
+        db.refresh(new_chat)
         
-        hidden_context = request.json.get("hidden_context", "").strip()
-
-        if hidden_context:
-            Message.query.filter_by(chat_id=chat.id, role="context").delete()
-            # Guardar como mensaje oculto (contexto), no será mostrado en frontend
-            context_msg = Message(chat_id=chat.id, role="context", content=hidden_context)
-            db.session.add(context_msg)
-            
-        # MCP - Model Context Protocol
+        logger.debug(f"[DEBUG] Nuevo chat creado para: {user['user_id']}; ID del chat: {new_chat.id}; Título: {new_chat.title}")
         
-        tool_name = request.json.get("tool", "").strip()
-        params = request.json.get("params", {})
-        mcp_context = None
-        if tool_name:
+        # 4. AVISAR A REDIS
+        SidebarCache.invalidate_user(user["user_id"], user["app_id"])
+        logger.info(f"CREATE: Chat {new_chat.id} vinculado a App: {user['app_id']}")
         
-        # 🔑 PASO 1: Determinar el cliente. Asumiremos que si tool_name existe,
-        # pertenece a un cliente MCP. Si el manager no lo encuentra, lanzará una excepción.
-        
-            try:
-                # 🔑 PASO 2: Generar el JWT SOLO si es una herramienta que lo requiere (ej. google_calendar)
-                # Como todas tus tools son google_, asumimos que el JWT siempre es necesario.
-                
-                # Nota: El user_id ya está en g.user_id, lo pasamos al manager.
-                
-                # --- LÓGICA CLAVE DE JWT/MANAGER ---
-                
-                # 1. Generar el JWT para la integración de Google Calendar
-                mcp_auth_token = generate_mcp_jwt(g.user_id, "google_calendar")
-                
-                # 2. Si no hay token, el usuario no está conectado a Google.
-                if not mcp_auth_token:
-                    # No podemos llamar a la tool de Google.
-                    print(f"❌ [Jarvis] No se pudo generar JWT para user_id={g.user_id}")
-                    return jsonify({"error": f"La herramienta '{tool_name}' requiere conexión con Google Calendar."}), 400
-                    
-                # 3. Llamada al Manager
-                # Creamos un nuevo loop (como ya lo tienes)
-                loop = asyncio.new_event_loop() 
-                try:
-                    # 🔄 El Manager DEBE instanciar el cliente con el auth_token
-                    # Implementaremos un método en el Manager para manejar esto:
-                    result = loop.run_until_complete(
-                        mcp_manager.call_tool_with_auth(
-                            tool_name=tool_name, 
-                            user_id=g.user_id, 
-                            auth_token=mcp_auth_token, # ⬅️ Pasamos el JWT
-                            **params
-                        )
-                    )
-                finally:
-                    loop.close()
-                    print(f"MCP Results: ({tool_name}):", result)
-                    
-                # 🔄 PASO 4: CHEQUEAR SI HUBO UN REFRESH DE TOKEN
-                # El resultado de la tool (ToolResult) trae el contexto si hubo cambios.
-                response_context = getattr(result, 'context', {})
-                
-                if "google_new_access_token" in response_context:
-                    new_access = response_context["google_new_access_token"]
-                    new_refresh = response_context.get("google_new_refresh_token")
-                    
-                    # Persistir los nuevos tokens en la DB de Jarvis
-                    token_entry = UserToken.query.filter_by(user_id=g.user_id, provider="google_calendar").first()
-                    
-                    if token_entry:
-                        token_entry.access_token = encrypt_token(new_access)
-                        if new_refresh:
-                            token_entry.refresh_token = encrypt_token(new_refresh)
-                        
-                        db.session.add(token_entry)
-                        db.session.commit() # Commit inmediato para el token
-                        print("[Jarvis] Google Token refrescado y persistido.")
-                
-                # Convertir a JSON serializable manualmente
-                result_dict = safe_serialize_call_result(result)
-                # construir mcp_context como JSON plano
-                mcp_context = json.dumps({
-                    "response": result_dict,
-                    "tool_used": tool_name,
-                    "token_refreshed": "google_new_access_token" in response_context
-                })
+        # 5. RETORNAR DATA
+        return {
+            "id": new_chat.id,
+            "title": new_chat.title,
+            "created_at": new_chat.created_at.isoformat()
+        }
 
-                # guardar en DB como oculto (no se renderiza en frontend)
-                mcp_msg = Message(
-                    chat_id=chat.id,
-                    role="mcp-tool",
-                    content=mcp_context
-                )
-                db.session.add(mcp_msg)
-
-            except Exception as e:
-                print("Error MCP:", e)
-
-
-        payload = build_payload(chat, recent, user_text, memory_context=memory_context, hidden_context=hidden_context, mcp_context=mcp_context)
-        print("🔍 PAYLOAD ANTES DEL MODELO:", payload)
-
-
-        # Usar stream para respuesta parcial
-        def generate():
-            try:
-                full_reply = ""
-                                       
-                # Llama a tu modelo pero ahora espera que `completion()` sea un generador
-                for chunk in completion_stream(payload):  
-                    full_reply += chunk
-                    yield chunk  # Streaming real al cliente
-
-                # Guardar respuesta completa al final
-                chat.updated_at = datetime.utcnow()
-                db.session.add(Message(chat_id=chat.id, role="assistant", content=full_reply))
-                db.session.commit()
-                
-                # EXTRAER Y GUARDAR MEMORIAS DESDE EL TEXTO DEL 
-                extracted_memories = extract_memory_from_text(user_text)
-                print("[DEBUG] Memorias extraídas:", extracted_memories)
-
-                notificaciones = []
-                
-                for mem_text in extracted_memories:
-                    priority = calculate_priority(mem_text)
-                    classification = classify_memory(mem_text)  # Ej: "hecho", "preferencia", etc.
-                    key = f"{classification}:{mem_text[:30]}"  # clave compuesta
-                    save_memory(chat.id, key, mem_text, memory_type=MemoryType.LONG_TERM, priority=priority)
-                    
-                    # Notificacion para enviar al frontend
-                    if priority >= 6:
-                        notificaciones.append({
-                            "type": "memory_saved",
-                            "message": f"He recordado algo importante: \"{mem_text}\""
-                        })      
-
-                summarize_and_trim(chat)  
-                                
-                if notificaciones:
-                    for nota in notificaciones:
-                        logger.info(f"Enviando notificación: [NOTIFICATION] {nota['message']}")
-                        yield "\n\n[NOTIFICATION] 💾 Memoria actualizada\n"
-
-            except Exception as e:
-                db.session.rollback()
-                logger.exception("Error durante el stream")
-                yield "\n[ERROR] " + str(e)  # ⬅️ devolvé algo al cliente
-            finally:
-                db.session.close()
-
-        return Response(stream_with_context(generate()), content_type="text/plain")  # 🔄 cambiamos jsonify
-
+    except HTTPException:
+        raise
     except Exception as e:
-        db.session.rollback()
-        logger.exception("Error en send_message")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        db.session.close()
+        db.rollback() 
+        logger.exception("Error al crear chat")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 # --------------- POST (extraer texto de archivos) ---------------
-@chat_bp.route('/extract_file', methods=['POST'])
-@clerk_required
-def extract_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No se proporcionó ningún archivo'}), 400
+# Función normal (fuera de la ruta) para la tarea en 2do plano
+def background_task(file_bytes: bytes, filename_bd: str, content_type: str, user_id: str, text_to_store: str, filename_ui: str):
+    user_events = event_queues[str(user_id)]
+    bg_session = SessionLocal() # La tarea de fondo maneja su propia sesión
+    try:
+        access_token = get_user_onedrive_token(user_id)
+        if not access_token:
+            return  # OneDrive es opcional: sin cuenta vinculada no hay nada que subir
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'Nombre de archivo vacío'}), 400
+        user_events.put({"type": "upload_started", "filename": filename_ui, "user_id": str(user_id)})
+        logger.info(f"Background upload started: {filename_ui}")
 
-    original_name, ext = os.path.splitext(file.filename)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = secure_filename(f"{original_name}_{timestamp}{ext}")
-    content_type = file.content_type
-    file_bytes = file.read()
+        download_url = upload_to_onedrive(access_token, filename_bd, file_bytes)
+
+        document = Document(
+            user_id=user_id, filename=filename_bd, content=text_to_store,
+            mime_type=content_type, file_size=len(file_bytes),
+            url=download_url, source="onedrive", tag="user_upload_mcp"
+        )
+
+        bg_session.add(document)
+        bg_session.commit()
+
+        user_events.put({"type": "upload_completed", "filename": filename_ui, "url": download_url, "user_id": str(user_id)})
+    except Exception as e:
+        bg_session.rollback()
+        logger.exception("Background task error")
+        user_events.put({"type": "upload_error", "filename": filename_ui, "error": str(e), "user_id": str(user_id)})
+    finally:
+        bg_session.close()
+
+
+@chat_router.post("/extract_file")
+async def extract_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Empty filename")
+
+    original_filename = file.filename
+    original_name_base, ext = os.path.splitext(file.filename)
+    timestamp = get_now().strftime("%Y%m%d_%H%M%S")
+    filename = secure_filename(f"{original_name_base}_{timestamp}{ext}")
+
+    content_type = file.content_type or ""
+    file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="El archivo supera los 10 MB")
 
     try:
         if content_type.startswith("image/"):
-            try:                
-                extracted_text = analyze_image_with_azure(file_bytes)
-                logger.info(f"Texto extraído de la imagen {filename} (longitud: {len(extracted_text)} caracteres)")
-                resp = jsonify({"text": f"🖼️ Imagen `{filename}`:\n\n{extracted_text}"})
-            except Exception as e:
-                logger.error(f"Error al analizar imagen con Azure Vision: {str(e)}")
-                return jsonify({"error": f"Error en Azure Vision: {str(e)}"}), 500
+            final_text = await run_in_threadpool(analyze_image_with_azure, file_bytes, user_id=user["user_id"])
+            logger.info(f"Text extracted from image {original_filename}")
+            resp_text = f"Image '{original_filename}':\n\n{final_text}"
         else:
-            file_stream = file.stream
-            text = extract_text_from_file(file_stream, filename)
-            full_text = f"### Contenido del archivo `{filename}`\n\n{text}"
-            resp = jsonify({'text': full_text})
+            final_text = await run_in_threadpool(extract_text_from_file, BytesIO(file_bytes), original_filename)
+            resp_text = f"File content '{original_filename}':\n\n{final_text}"
 
-        # --- background upload ---
-        @copy_current_request_context
-        def background_task(file_bytes=file_bytes, filename=filename, content_type=content_type, user_id=g.user_id):
-            try:
-                """
-                # Traer el usuario completo
-                user = User.query.get(user_id)
-                if not user or not can_upload_image(user.name):
-                    logger.warning(f"Usuario {user.name if user else 'desconocido'} no permitido para subir imágenes")
-                    return
-                """
+        # Mandar la tarea a segundo plano. FastAPI se encarga de ejecutarla
+        background_tasks.add_task(
+            background_task,
+            file_bytes, filename, content_type, user["user_id"], final_text, original_filename
+        )
 
-                logger.info("🚀 Iniciando background_task...")  # log de prueba
-                access_token = get_user_onedrive_token(user_id)  # <- usar token delegado
-                if not access_token:
-                    logger.error("No hay token de OneDrive en sesión")
-                    return
-                download_url = upload_to_onedrive(access_token, filename, file_bytes)
-                document = Document(
-                    mime_type=content_type,
-                    size_bytes=len(file_bytes),
-                    url=download_url,
-                    source="onedrive",
-                    tag="user_upload_mcp",
-                    user_id=user_id,
-                )
-                db.session.add(document)
-                db.session.commit()
-                logger.info(f"Archivo {filename} guardado en OneDrive y DB")
-            except Exception as e:
-                logger.exception(f"Error en background upload OneDrive: {e}")
-
-        threading.Thread(target=background_task, daemon=True).start()
-        return resp
+        return {
+            "text": resp_text,
+            "filename": original_filename,
+            "status": "processing_bg"
+        }
 
     except Exception as e:
-        logger.exception("Error procesando archivo:")
-        return jsonify({'error': str(e)}), 500
+        logger.exception("Error processing file")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 # --------------- PUT ---------------
-@chat_bp.route('/<chat_id>/title', methods=['PUT'])
-@clerk_required
-def update_chat_title(chat_id):
-    chat = Chat.query.get(chat_id)
-    if not chat or chat.user_id != g.user_id:
-        return jsonify({'error': 'Acceso denegado'}), 403
-    
-    data = request.get_json()
-    new_title = data.get('title')
+@chat_router.put("/{chat_id}/title")
+def update_chat_title(
+    chat_id: UUID, 
+    payload: UpdateTitleRequest, 
+    db: Session = Depends(get_db), 
+    user: dict = Depends(get_current_user)
+):
+    try:
+        chat = db.query(Chat).filter(
+            Chat.id == chat_id, Chat.user_id == user["user_id"], Chat.app_id == user["app_id"]
+        ).first()
+        
+        if not chat:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso denegado")
+        
+        chat.title = payload.title
+        db.commit()
+        
+        # === AVISAR A REDIS ===
+        SidebarCache.invalidate_user(user["user_id"], user["app_id"])
+        logger.info(f"[Redis] Sidebar invalidado por actualización de título del chat: {chat_id}")
 
-    chat.title = new_title
-    db.session.commit()
-
-    return jsonify({'message': 'Título actualizado', 'title': new_title})
+        return {'message': 'Título actualizado', 'title': payload.title}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception("Error actualizando título del chat")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
