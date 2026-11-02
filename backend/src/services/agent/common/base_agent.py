@@ -27,11 +27,9 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from src.database.settings.connection import DATABASE_URL  # Importamos TU URL ya resuelta
 
 from .helpers import _generate_feature_name
-from .tools.system_tools import invoke_skill
 from src.core.logging import get_logger 
 from src.database.models.models import TokenLog 
 from src.database.settings.connection import get_db
-from src.services.agent.jarvis.spec.sdd_orchestrator import SDDOrchestrator
 from .utils.session_manager import create_agent_session, complete_session, fail_session 
 
 
@@ -78,12 +76,10 @@ class BaseAgent:
 
     def __init__(self, llm: ChatOpenAI, tools: list, template: str):
         self.llm = llm.bind(parallel_tool_calls=False)
-        global_tools = [invoke_skill]
-        self.tools =  tools + global_tools
+        self.tools = tools
         self.system_prompt = template
         self.memory = PostgresSaver(_postgres_pool)
         self.memory.setup()
-        self.sdd = SDDOrchestrator(jarvis_agent=self)
         self.app = create_react_agent(          # Construimos el Grafo del Agente
             model=self.llm,
             tools=self.tools,
@@ -166,22 +162,6 @@ class BaseAgent:
             injected_content += agent_rule.read_text(encoding="utf-8") + "\n\n"
             context["rules"].append(f"anti_hallucination_{self.name.lower()}")
 
-        # 2.Triggers para Skills
-        skill_triggers = ["skill", "crea una skill", "descarga una skill", "actualiza la skill"]
-        if any(trigger in instruction_lower for trigger in skill_triggers):
-            skills_path = rules_dir / "skills_workflow.md"
-            if skills_path.exists():
-                injected_content += skills_path.read_text(encoding="utf-8") + "\n\n"
-                context["rules"].append("skills_workflow")
-
-        # 3. Treiggers para files
-        file_triggers = ["archivo", "carpeta", "file", "folder", "directorio", "renombra", "elimina", "borra", "dónde está", "busca"]
-        if any(trigger in instruction_lower for trigger in file_triggers):
-            files_path = rules_dir / "file_operations.md"
-            if files_path.exists():
-                injected_content += files_path.read_text(encoding="utf-8") + "\n\n"
-                context["rules"].append("file_operations")
-
         return instruction, injected_content, context
     
     # --- Make the action ---
@@ -191,45 +171,6 @@ class BaseAgent:
         original_instruction = instruction
         instruction, dynamic_rules, context = self._extract_dynamic_rules(instruction)
         self._last_context = context
-        
-        # ==========================================
-        # INTERCEPTOR SDD (SPEC-DRIVEN DEVELOPMENT)
-        # ==========================================
-        sdd_triggers = ["use sdd", "modo sdd", "sdd", "usar sdd"]
-        is_sdd_trigger = any(t in instruction.lower() for t in sdd_triggers)
-        sdd_exit_triggers = ["salir del modo sdd", "salir sdd", "cancelar sdd", "abortar sdd", "exit sdd", "salir"]
-        
-        # Si ya hay un flujo en proceso, lo atrapa y no llama a LangGraph LLM
-        if self.sdd.is_sdd_active():
-            if any(t in instruction.lower() for t in sdd_exit_triggers):
-                self.sdd.current_session = None
-                return {
-                    "output": "Saliste del modo SDD. ¿En qué más te ayudo?",
-                    "status": "completed",
-                    "metadata": {"agent": self.name, "sdd_mode": False}
-                }
-
-            start_time = time.time()
-            sdd_response = self.sdd.process_user_response(instruction)
-            return {
-                "output": sdd_response,
-                "status": "completed",
-                "metadata": {"agent": self.name, "time_sec": round(time.time() - start_time, 2), "sdd_mode": True}
-            }
-            
-        # Si el usuario activa SDD por primera vez en este prompt
-        elif is_sdd_trigger:
-            start_time = time.time()
-            clean_instruction = instruction
-            for t in sdd_triggers: clean_instruction = clean_instruction.lower().replace(t, "").strip()
-            
-            sdd_response = self.sdd.start_sdd(clean_instruction)
-            return {
-                "output": sdd_response,
-                "status": "completed",
-                "metadata": {"agent": self.name, "time_sec": round(time.time() - start_time, 2), "sdd_mode": True}
-            }
-        # ==========================================
         
         # 1. CREAR LA SESIÓN EN BASE DE DATOS (Aparece en tu Frontend Panel)
         session_id = create_agent_session(

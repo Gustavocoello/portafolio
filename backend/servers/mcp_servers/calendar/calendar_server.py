@@ -28,7 +28,6 @@ from utils.models import Event
 from utils.time_helper import get_now
 from sources.google_calendar import GoogleCalendarConnector
 from sources.natural_parser import parse_natural_language_to_event
-from utils.Keep_alive_mcp import keep_alive_mcp
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -481,7 +480,6 @@ async def eliminar_evento(context: Context, calendar_id: str, event_id: str) -> 
 
 #""" # Para utilizarlo en local
 if __name__ == "__main__":
-        keep_alive_mcp()
         uvicorn.run(
             app,
             host="0.0.0.0",

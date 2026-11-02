@@ -12,8 +12,6 @@ from src.core.time_helper import get_now
 from src.services.agent.common.base_agent import BaseAgent
 from src.services.llm.chat.llm_router import get_langchain_llm
 
-# Asumimos que aquí importarás las herramientas que delegan a los otros agentes
-# (Te dejaré un ejemplo de cómo se verán estas herramientas en el siguiente paso)
 from src.services.agent.jarvis.tool import build_jarvis_tools
 
 def get_jarvis_template():
@@ -57,7 +55,7 @@ _CACHE_TTL = timedelta(hours=12)
 
 def get_jarvis(user_id: str, client_type: str = "web") -> JarvisAgent:
     """
-    Retorna la instancia de JarvisAgent (El Orquestador) para ese user_id.
+    Retorna la instancia de JarvisAgent para ese user_id.
     La crea si no existe, la reutiliza si ya está en caché.
     """
     now = get_now()
@@ -82,10 +80,6 @@ if __name__ == "__main__":
     print("JARVIS: PERSONAL ASSISTANT")
     print("Type 'q' to exit.")
     print("=" * 50)
-    
-    from src.services.agent.jarvis.tools.run_skills import list_skills, SKILLS_DIR
-    print(f"Available skills in {SKILLS_DIR}:")
-    print(list_skills())
 
     jarvis = get_jarvis(user_id=test_user)
 

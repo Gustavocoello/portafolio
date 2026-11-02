@@ -8,7 +8,7 @@ import json
 from uuid import UUID
 from typing import Optional, Any
 from dotenv import load_dotenv
-from upstash_redis import Redis
+import redis
 from src.core.logging import get_logger
 
 logger = get_logger('redis_client')
@@ -25,22 +25,19 @@ class RedisClient:
         return cls._instance
     
     def _initialize(self):
-        self.url = os.getenv('REDIS_URL')
-        self.token = os.getenv('REDIS_TOKEN')
+        self.url = os.getenv('REDIS_URL')  # redis://redis:6379/0 (el del docker-compose)
         self._available = False
         self.client = None
 
-        if not self.url or not self.token:
-            logger.warning("Variables REDIS_URL o REDIS_TOKEN ausentes.")
+        if not self.url:
+            logger.warning("REDIS_URL ausente: la caché queda desactivada.")
             return
 
         try:
-            # Usamos el SDK de Upstash (Ideal para entornos Serverless)
-            self.client = Redis(url=self.url, token=self.token)
-            # Test simple
-            self.client.get("ping") 
+            self.client = redis.Redis.from_url(self.url, decode_responses=True, socket_timeout=3)
+            self.client.ping()
             self._available = True
-            logger.info("Upstash Redis (HTTP) conectado correctamente")
+            logger.info("Redis conectado")
         except Exception as e:
             logger.warning(f"Redis no disponible: {str(e)}")
 

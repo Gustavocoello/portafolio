@@ -51,28 +51,6 @@ def completion(messages):
     raise RuntimeError("Todos los proveedores fallaron ─ intenta más tarde.")
 
 
-def completion_stream(messages):
-    """Generador de streaming usando API_PROVIDERS_TO_AGENT."""
-    for prov, client in _clients():
-        for attempt in range(MAX_RETRIES):
-            logger.info(f"[STREAMING] Usando provider '{prov['name']}' (intento {attempt + 1})")
-            sent = False
-            try:
-                resp = client.chat.completions.create(model=prov["model"], messages=messages, stream=True)
-                for chunk in resp:
-                    delta = chunk.choices[0].delta.content if chunk.choices else None
-                    if delta:
-                        sent = True
-                        yield delta
-                return
-            except Exception as err:
-                logger.error(f"[STREAMING] Provider '{prov['name']}' falló: {err}")
-                # Reintentar después de mandar texto lo duplicaría en el cliente
-                if sent:
-                    raise
-
-    raise RuntimeError("Todos los proveedores fallaron ─ intenta más tarde.")
-
 # Agentes
 
 def get_langchain_llm(temperature: int = 0) -> BaseChatModel:

@@ -7,26 +7,18 @@ from src.services.llm.chat import llm_router
 
 
 class FakeOpenAI:
-    """Cliente falso: el proveedor 'down' siempre falla, 'flaky' corta el stream a la mitad."""
+    """Cliente falso: el proveedor 'down' siempre falla."""
     calls = []
 
     def __init__(self, base_url, api_key):
         self.api_key = api_key
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
 
-    def create(self, model, messages, stream=False):
+    def create(self, model, messages):
         FakeOpenAI.calls.append(self.api_key)
         if self.api_key == "down":
             raise ConnectionError("rate limited")
-        if stream:
-            return self._stream()
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=f" from {self.api_key} "))])
-
-    def _stream(self):
-        yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="hola "))])
-        if self.api_key == "flaky":
-            raise ConnectionError("stream cortado")
-        yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="mundo"))])
 
 
 @pytest.fixture
@@ -52,18 +44,3 @@ def test_falls_back_and_recovers_on_next_call(providers):
         llm_router.completion([])
     providers("ok")
     assert llm_router.completion([]) == "from ok"
-
-
-def test_stream_does_not_repeat_text_after_partial_failure(providers):
-    providers("flaky", "ok")
-    out = []
-    with pytest.raises(ConnectionError):
-        for chunk in llm_router.completion_stream([]):
-            out.append(chunk)
-    assert out == ["hola "]
-    assert FakeOpenAI.calls == ["flaky"]
-
-
-def test_stream_falls_back_before_any_text(providers):
-    providers("down", "ok")
-    assert "".join(llm_router.completion_stream([])) == "hola mundo"

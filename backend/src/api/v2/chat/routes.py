@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from io import BytesIO
 
 # Importaciones de LangChain/LangGraph necesarias para parsear los pensamientos
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage
 
 # Tus dependencias internas
 from src.core.logging import get_logger
@@ -20,7 +20,6 @@ from src.database.models.models import Chat, Message
 from src.services.cache.redis_sidebar import SidebarCache
 from src.services.cache.redis_cache import ChatCache
 from src.services.rag.pipeline import RAGPipeline
-from src.services.llm.chat.chat_service import get_langchain_history 
 from src.services.integrations.azure.azure_vision import analyze_image_with_azure
 from src.services.integrations.microsoft.markitdown_extractor import extract_text_from_file
 from src.services.agent.jarvis.agent import get_jarvis
@@ -76,17 +75,7 @@ def send_message_v2(
             db.add(context_msg)
             db.commit()
 
-        # 4. Historial (usando límite de 10)
-        recent = (
-            db.query(Message)
-            .filter(Message.chat_id == chat.id, Message.role != "context", Message.id != user_message.id)
-            .order_by(Message.created_at.desc())
-            .limit(10).all()[::-1]
-        )
-
-        langchain_history = get_langchain_history(chat=chat, recent=recent, hidden_context=hidden_context)
-        
-        # 5. Instanciar Agente Orquestador
+        # 4. Agente
         jarvis_agent = get_jarvis(user["user_id"])
 
         # 6. Autogenerar título
@@ -103,69 +92,31 @@ def send_message_v2(
         def generate():
             gen_session = SessionLocal()
             try:
-                yield "[THOUGHT] Analizando la solicitud inicial y preparando estrategia de ejecución...\n"
-                
                 full_reply = ""
-                session_uuid = str(chat_id) # Usamos el chat_id o generas un uuid único de sesión
-                
-                # Ejecutamos LangGraph de manera segura en un hilo asíncrono
-                # LangGraph devuelve el estado completo en cada "salto" del grafo
-                for state_chunk in jarvis_agent.stream_task(user_text, user["user_id"], session_uuid):
-                    
+                # El hilo de memoria del agente es el chat: así recuerda la conversación entre mensajes
+                for state_chunk in jarvis_agent.stream_task(user_text, user["user_id"], chat_id=str(chat_id), thread_id=str(chat_id)):
+                    if "error" in state_chunk:
+                        yield f"[ERROR] {state_chunk['error']}"
+                        return
                     messages = state_chunk.get("messages", [])
-                    if not messages:
-                        continue
-                        
-                    last_msg = messages[-1]
-                    
-                    # CASO A: El LLM decidió usar una herramienta
-                    if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
-                        for tool_call in last_msg.tool_calls:
-                            t_name = tool_call.get("name", "UnknownTool")
-                            t_args = tool_call.get("args", {})
-                            
-                            # Formateamos los argumentos de manera legible pero segura
-                            args_str = json.dumps(t_args, ensure_ascii=False) if t_args else "{}"
-                            
-                            yield f"[THOUGHT] Acción requerida: Ejecutando herramienta '{t_name}'.\n"
-                            yield f"[THOUGHT] Parámetros inyectados: {args_str}\n"
-                            yield f"[THOUGHT] Esperando respuesta del sistema externo...\n"
-
-                    # CASO B: La herramienta terminó y devolvió un resultado
-                    elif isinstance(last_msg, ToolMessage):
-                        t_name = last_msg.name
-                        # No mostramos toda la data (puede ser enorme), solo avisamos que se obtuvo
-                        yield f"[THOUGHT] Herramienta '{t_name}' ejecutada con éxito. Extrayendo datos relevantes...\n"
-                        yield f"[THOUGHT] Evaluando los resultados obtenidos para formular el siguiente paso...\n"
-
-                    # CASO C: El agente da la respuesta final al usuario (Fin del ciclo)
-                    elif isinstance(last_msg, AIMessage) and not last_msg.tool_calls:
-                        yield "[THOUGHT] Análisis completado. Generando respuesta final...\n"
+                    last_msg = messages[-1] if messages else None
+                    if isinstance(last_msg, AIMessage) and not last_msg.tool_calls:
                         full_reply = last_msg.content
-                        
-                        # (Opcional) Si quieres simular un stream de texto del resultado final:
-                        # yield full_reply 
-                        # Si tu framework de frontend prefiere todo de golpe, lo envías completo:
-                        yield full_reply 
 
-                # Guardamos la respuesta final en DB
                 if full_reply:
+                    yield full_reply
                     inner_chat = gen_session.get(Chat, chat_id)
                     inner_chat.updated_at = get_now()
-
                     new_msg = Message(chat_id=chat_id, role="assistant", content=full_reply)
                     gen_session.add(new_msg)
                     gen_session.commit()
-
                     ChatCache.append_message(str(chat_id), {
                         "id": new_msg.id, "role": "assistant",
                         "content": full_reply, "created_at": get_now().isoformat()
                     })
-
             except Exception as e:
                 gen_session.rollback()
                 logger.exception("Error during agent stream")
-                yield f"\n[THOUGHT] Se produjo un error crítico en la cadena de razonamiento.\n"
                 yield f"\n[ERROR] {str(e)}"
             finally:
                 gen_session.close()

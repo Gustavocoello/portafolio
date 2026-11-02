@@ -22,9 +22,6 @@ from src.database.settings.connection import SessionLocal, get_db
 from src.services.cache.redis_sidebar import SidebarCache
 from src.services.llm.chat.free_tier import generate_prompt
 from src.database.models.models import Chat, Message, Document
-from src.services.mcps.client.client_manager import MCPClientManager
-from src.services.llm.chat.llm_router import completion_stream
-from src.services.llm.chat.chat_service import build_payload, execute_mcp_tool, summarize_and_trim, LLM_ROLES
 from src.services.auth.auth.auth_middleware import get_current_user, authenticate
 from src.services.integrations.onedrive.onedrive_service import upload_to_onedrive, get_user_onedrive_token
 from src.services.integrations.azure.azure_vision import analyze_image_with_azure
@@ -39,8 +36,6 @@ event_queues = defaultdict(Queue)
 ANON_LIMIT = 5
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 DEFAULT_TITLES = (None, "", "Sin titulo", "Sin título")
-# -- MCP Client --
-mcp_client = MCPClientManager(user_id=None)  # user_id se asignará dinámicamente en cada llamada
 
 ## -------------- Mensajes de la IA con memoria -----------
 search_router = APIRouter()
@@ -51,12 +46,6 @@ class SearchPromptRequest(BaseModel):
 class CreateChatRequest(BaseModel):
     title: Optional[str] = "Sin título"
     
-class SendMessageRequest(BaseModel):
-    text: str
-    hidden_context: Optional[str] = ""
-    tool: Optional[str] = ""
-    params: Optional[Dict[str, Any]] = {}
-
 class UpdateTitleRequest(BaseModel):
     title: str
 
@@ -286,122 +275,6 @@ def create_chat(
             detail=str(e)
         )
 
-# --------------- POST (enviar mensaje) ---------------
-@chat_router.post("/{chat_id}/message")
-def send_message(
-    chat_id: UUID, 
-    payload: SendMessageRequest, 
-    db: Session = Depends(get_db), 
-    user: dict = Depends(get_current_user)
-):
-    try:
-        user_text = payload.text.strip()
-        if not user_text:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty message")
-
-        # 1. Buscar o crear el chat
-        chat = db.query(Chat).filter(
-            Chat.id == chat_id, Chat.user_id == user["user_id"], Chat.app_id == user["app_id"]
-        ).first()
-
-        if not chat:
-            chat = Chat(id=chat_id, user_id=user["user_id"], app_id=user["app_id"], title="Sin título")
-            db.add(chat)
-            db.flush() # flush() asigna un ID pero sin hacer commit final todavía
-
-        # 2. Guardar mensaje del usuario
-        chat.updated_at = get_now()
-        user_message = Message(chat_id=chat.id, role="user", content=user_text)
-        db.add(user_message)
-
-        # 3. Manejar contexto oculto (para RAG o imágenes)
-        hidden_context = payload.hidden_context.strip()
-        if hidden_context:
-            db.query(Message).filter_by(chat_id=chat.id, role="context").delete()
-            context_msg = Message(chat_id=chat.id, role="context", content=hidden_context)
-            db.add(context_msg)
-
-        db.commit()
-        ChatCache.append_message(str(chat.id), {
-            "id": user_message.id, "role": "user",
-            "content": user_text, "created_at": get_now().isoformat()
-        })
-
-        # 4. Obtener mensajes recientes (solo roles válidos para el LLM)
-        recent = db.query(Message).filter(
-            Message.chat_id == chat.id,
-            Message.role.in_(LLM_ROLES),
-            Message.id != user_message.id
-        ).order_by(Message.created_at.desc()).all()[::-1]
-
-        # 5. Ejecutar herramienta MCP (si existe)
-        mcp_context = None
-        if payload.tool:
-            mcp_context = execute_mcp_tool(
-                tool_name=payload.tool, params=payload.params, user_id=user["user_id"],
-                db_session=db, chat_id=chat.id, mcp_manager=mcp_client
-            )
-            if mcp_context is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST, 
-                    detail=f"Tool '{payload.tool}' requires connection."
-                )
-
-        # 6. Construir payload para el LLM
-        llm_payload = build_payload(
-            chat=chat, recent=recent, user_text=user_text, 
-            hidden_context=hidden_context, mcp_context=mcp_context
-        )
-
-        # 7. Autogenerar título si es el primer mensaje
-        if chat.title in DEFAULT_TITLES:
-            words = user_text.split()
-            chat.title = " ".join(words[:10]) + ("..." if len(words) > 10 else "")
-            db.commit()
-            SidebarCache.invalidate_user(user["user_id"], user["app_id"])
-
-        # 8. Generador para Streaming (Mantiene su propia DB Session por ser un proceso largo).
-        # Es síncrono a propósito: FastAPI lo itera en un hilo y el stream del LLM no congela al resto.
-        def generate():
-            gen_session = SessionLocal()
-            try:
-                full_reply = ""
-                for chunk in completion_stream(llm_payload):
-                    full_reply += chunk
-                    yield chunk
-
-                # Guardar en base de datos al finalizar el stream
-                inner_chat = gen_session.get(Chat, chat_id)
-                inner_chat.updated_at = get_now()
-
-                new_msg = Message(chat_id=chat_id, role="assistant", content=full_reply)
-                gen_session.add(new_msg)
-
-                summarize_and_trim(inner_chat, gen_session)
-                gen_session.commit()
-
-                # Guardar en Redis Cache
-                ChatCache.append_message(str(chat_id), {
-                    "id": new_msg.id, "role": "assistant",
-                    "content": full_reply, "created_at": get_now().isoformat()
-                })
-            except Exception as e:
-                gen_session.rollback()
-                logger.exception("Error during stream")
-                yield f"\n[ERROR] {str(e)}"
-            finally:
-                gen_session.close()
-
-        # Retornamos el Streaming nativo de FastAPI
-        return StreamingResponse(generate(), media_type="text/plain")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.exception("Error in send_message")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-        
 # --------------- POST (extraer texto de archivos) ---------------
 # Función normal (fuera de la ruta) para la tarea en 2do plano
 def background_task(file_bytes: bytes, filename_bd: str, content_type: str, user_id: str, text_to_store: str, filename_ui: str):
