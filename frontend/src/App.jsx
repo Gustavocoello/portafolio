@@ -20,13 +20,8 @@ import { authLogger } from '@/shared/log/logger.jsx';
 // SDK
 import ChatPage from '@/projects/jarvis-chat/ChatPage';
 
-import {inject} from '@vercel/analytics';
 import '@/styles/App.css';
 
-// Inicializar Vercel Analytics 
-if (import.meta.env.VITE_DEBUG === 'true') {
-  inject({ mode: 'debug' }); // puedes poner lo que quieras
-}
 
 function App() {
   const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme'));

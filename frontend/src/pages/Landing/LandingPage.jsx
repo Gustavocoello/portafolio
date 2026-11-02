@@ -7,7 +7,8 @@ import Footer from "@/shared/ui/layout/Footer/Footer.jsx";
 import { storageAdapter, USER_ID_KEY } from "@/shared/utils/storageAdapter";
 // ICONS
 import { FaCodepen, FaUserShield, FaLinkedin, FaGithub } from "react-icons/fa";
-import { SiOpenai, SiGnubash } from "react-icons/si";
+import { SiGnubash } from "react-icons/si";
+import { RiOpenaiFill } from "react-icons/ri";
 import { BsFillMenuButtonWideFill } from "react-icons/bs";
 import { GiBreakingChain } from "react-icons/gi";
 import { IoMdChatbubbles } from "react-icons/io";
@@ -123,7 +124,7 @@ const LandingPage = () => {
   { name: "Node.js",    src: `${DEVICON}/nodejs/nodejs-original.svg` },
   { name: "PostgreSQL", src: `${DEVICON}/postgresql/postgresql-original.svg` },
   { name: "MongoDB",    src: `${DEVICON}/mongodb/mongodb-original.svg` },
-  { name: "OpenAI",     icon: <SiOpenai /> },
+  { name: "OpenAI",     icon: <RiOpenaiFill /> },
   { name: "Docker",     src: `${DEVICON}/docker/docker-original.svg` },
   { name: "Git",        src: `${DEVICON}/git/git-original.svg` },
 ];
@@ -1929,7 +1930,6 @@ const LandingPage = () => {
             <hr className="service-divider" />
             <h3 className="service-name">Jarvis</h3>
           </div>
-          {/* <JarvisCard onClick={goToChat} /> Para usar la animacion mas adelante*/}
           {/*Tars*/}
           <div className="service-card" onClick={goToJarvis}>
             <div className="service-icon">
