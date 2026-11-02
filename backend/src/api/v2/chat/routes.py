@@ -65,7 +65,7 @@ def send_message_v2(
             if count > VISITOR_LIMIT:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba."}
+                    detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba. Inicia sesión para seguir conversando."}
                 )
 
         # 1. Buscar o Crear Chat
@@ -77,6 +77,14 @@ def send_message_v2(
             chat = Chat(id=chat_id, user_id=user["user_id"], app_id=user["app_id"], title="Sin título")
             db.add(chat)
             db.flush()
+
+        # El visitante no tiene la memoria del agente: le pasamos el hilo de este chat (antes de guardar el mensaje nuevo)
+        history = []
+        if not owner:
+            previos = db.query(Message).filter(
+                Message.chat_id == chat.id, Message.role.in_(("user", "assistant"))
+            ).order_by(Message.created_at.desc()).limit(12).all()
+            history = [{"role": m.role, "content": m.content} for m in reversed(previos)]
 
         # 2. Guardar mensaje
         chat.updated_at = get_now()
@@ -110,7 +118,7 @@ def send_message_v2(
             try:
                 full_reply = ""
                 if not owner:
-                    full_reply = generate_prompt({"description": user_text})  # sin memoria ni herramientas
+                    full_reply = generate_prompt({"description": user_text}, history)  # sin herramientas; con el hilo del chat
                 else:
                     # El hilo de memoria del agente es el chat: así recuerda la conversación entre mensajes
                     for state_chunk in jarvis_agent.stream_task(user_text, user["user_id"], chat_id=str(chat_id), thread_id=str(chat_id)):

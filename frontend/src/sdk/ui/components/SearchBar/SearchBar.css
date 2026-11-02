@@ -25,27 +25,35 @@
 /* Caja redondeada que se expande */
 .search-box-container {
   flex: 1;
-  background-color: #151413;
-  border: 2px solid white;
-  border-radius: 30px;
+  background-color: var(--jarvis-surface);
+  border: 1px solid var(--jarvis-border);
+  border-radius: 22px;
   padding: 12px 16px 16px 16px; /* espacio inferior para el botón + */
   display: flex;
   flex-direction: column;
   position: relative;
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   gap: 10px;
   min-width: 0;  /*Funciona para que no se desborde por muchos archivos*/
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
+
+.search-box-container:focus-within {
+  border-color: color-mix(in srgb, var(--jarvis-accent) 55%, var(--jarvis-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--jarvis-accent) 15%, transparent), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.search-textarea::placeholder { color: var(--jarvis-muted); }
 
 /* Archivo dentro del campo */
 .file-preview-inside {
   flex: 0 0 auto;        /* <-- evita que crezca de más */ /*Funciona para que no se desborde por muchos archivos*/
   display: flex;
   align-items: center;
-  background-color: #2a2a2a;
+  background-color: var(--jarvis-surface-2);
   border-radius: 10px;
   padding: 6px 10px;
-  color: white;
+  color: var(--jarvis-text);
   font-size: 13px;
   overflow: hidden;
   min-width: 0px;
@@ -79,7 +87,7 @@
 .remove-file-button {
   background: none;
   border: none;
-  color: #ccc;
+  color: var(--jarvis-muted);
   cursor: pointer;
   padding: 4px;
   border-radius: 50%;
@@ -88,7 +96,7 @@
 
 .remove-file-button:hover {
   background-color: rgba(255, 255, 255, 0.1);
-  color: white;
+  color: var(--jarvis-text);
 }
 
 /* Textarea */
@@ -106,7 +114,7 @@
   outline: none;
   font-size: 14px;
   background-color: transparent;
-  color: white;
+  color: var(--jarvis-text);
   resize: none;
   font-family: inherit;
   max-height: 100px;
@@ -117,7 +125,7 @@
   position: absolute;
   right: 18px;
   bottom: 18px;
-  color: white;
+  color: var(--jarvis-text);
   font-size: 24px;
   cursor: pointer;
   user-select: none;
@@ -125,7 +133,7 @@
 }
 /* Efecto hover para ambos iconos */
 .arrow-icon:hover {
-  color: #4f4f50;
+  color: var(--jarvis-muted);
 }
 /* Eliminar outline al hacer focus */
 .arrow-icon:focus{
@@ -136,7 +144,7 @@
   position: absolute;
   right: 18px;
   bottom: 18px;
-  color: white;
+  color: var(--jarvis-text);
   font-size: 24px;
   cursor: pointer;
   user-select: none;
@@ -159,21 +167,21 @@
 
 .plus-icon {
   font-size: 20px;
-  color: #aaa;
+  color: var(--jarvis-muted);
   cursor: pointer;
   transition: transform 0.2s ease;
 }
 
 .plus-icon:hover {
   transform: scale(1.15);
-  color: #f6f4f4;
+  color: var(--jarvis-text);
 }
 
 /* Menú desplegable */
 .dropdown-menu {
   position: absolute;
   bottom: 30px;
-  background-color: #2c2c2c;
+  background-color: var(--jarvis-surface-2);
   border-radius: 12px;
   padding: 8px;
   display: flex;
@@ -193,14 +201,14 @@
   display: flex;
   align-items: center;
   cursor: pointer;
-  color: white;
+  color: var(--jarvis-text);
   padding: 6px 10px;
   border-radius: 10px;
   transition: background 0.2s ease;
 }
 
 .menu-item:hover {
-  background-color: #3a3a3a;
+  background-color: var(--jarvis-hover);
 }
 
 .menu-icon {
@@ -272,19 +280,19 @@
   max-width: 90%;
   margin: 8px auto 0 auto;
   padding: 6px 10px;
-  background-color: #2c2c2c;
-  color: white;
+  background-color: var(--jarvis-surface-2);
+  color: var(--jarvis-text);
   gap: 6px;
 }
 
 .clear-selection-icon {
   cursor: pointer;
   font-size: 1.2rem;
-  color: #555;
+  color: var(--jarvis-muted);
   transition: color 0.2s ease;
 }
 .clear-selection-icon:hover {
-  color: white;
+  color: var(--jarvis-text);
 }
 
 /* ------------------- MODAL PERSONALIZADO (cerca del SearchBar) ------------------- */
@@ -305,7 +313,7 @@
 
 /* contenido del modal */
 .modal-content {
-  background-color: #333;
+  background-color: var(--jarvis-surface-2);
   padding: 2rem;
   border-radius: 12px;
   max-height: 80vh;
@@ -330,13 +338,13 @@
 .modal-header .modal-title {
   font-size: 22px;
   font-weight: bold;
-  color: #fff;
+  color: var(--jarvis-text);
   margin: 0;
 }
 .empty-message {
   padding: 1rem;
   text-align: center;
-  color: #888;
+  color: var(--jarvis-muted);
   font-style: italic;
 }
 
@@ -353,8 +361,8 @@
 .tool-tabs button {
   padding: 6px 10px;
   border: none;
-  background-color: #2a2a2a;
-  color: white;
+  background-color: var(--jarvis-surface-2);
+  color: var(--jarvis-text);
   border-radius: 6px;
   cursor: pointer;
   padding: 10px 16px;
@@ -362,7 +370,7 @@
   transition: background-color 0.2s ease;
 }
 .tool-tabs button:hover {
-  background-color: #3a3a3a;
+  background-color: var(--jarvis-hover);
 }
 
 .tool-list {
@@ -389,8 +397,8 @@
 
 .menu-item-tools {
   padding: 8px;
-  background-color: #292929;
-  color: white;
+  background-color: var(--jarvis-surface-2);
+  color: var(--jarvis-text);
   border-radius: 6px;
   cursor: pointer;
 }
@@ -399,7 +407,7 @@
 }
 .empty-message button {
   background-color: #007bff; /* Color primario (azul) */
-  color: white;
+  color: var(--jarvis-text);
   border: none;
   padding: 0.5rem 1rem;
   margin: 0.5rem 0.5rem 0 0;

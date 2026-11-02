@@ -4,7 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 # Importamos las dependencias core de FastAPI
-from src.services.auth.auth.auth_middleware import get_current_user
+import os
+
+from src.services.auth.auth.auth_middleware import get_current_user, es_dueno
 from src.database.settings.connection import get_db
 from src.database.models.models import UserToken
 from src.core.logging import get_logger
@@ -68,8 +70,13 @@ def get_integration_status(
         stmt = select(UserToken).filter_by(user_id=user_id, provider="google_calendar")
         google_token = db.execute(stmt).scalar_one_or_none()
 
+        # Correo, Notion y GitHub usan credenciales del servidor: aquí solo se ve si están configurados
         return {
-            "google_calendar": google_token is not None
+            "owner": es_dueno(user_data),
+            "google_calendar": google_token is not None,
+            "email": bool(os.getenv("MAIL_USER") and os.getenv("MAIL_PASSWORD")),
+            "notion": bool(os.getenv("MCP_NOTION")),
+            "github": bool(os.getenv("MCP_GITHUB")),
         }
         
     except Exception as e:

@@ -69,10 +69,11 @@ export const sendMessage = async (
   }
 };
 
-export const sendAnonymousMessage = async (promptText, client) => {
+export const sendAnonymousMessage = async (promptText, client, history = []) => {
   if (!client) throw new Error('[jarvis-sdk] sendAnonymousMessage requiere un client');
   try {
-    const response = await client.post('/api/v1/search/prompt', { prompt: promptText });
+    // El modo anónimo no guarda nada en el servidor: el hilo del chat viaja con cada mensaje
+    const response = await client.post('/api/v1/search/prompt', { prompt: promptText, history });
     return response.data;
   } catch (error) {
     throw new Error(error.response?.data?.detail?.error || 'Error en mensaje anónimo');

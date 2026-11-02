@@ -41,6 +41,7 @@ search_router = APIRouter()
 
 class SearchPromptRequest(BaseModel):
     prompt: str
+    history: list[dict] = []  # turnos previos del chat anónimo (los manda el navegador; free_tier los limpia)
 
 class CreateChatRequest(BaseModel):
     title: Optional[str] = "Sin título"
@@ -64,11 +65,11 @@ def handle_search_prompt(request: Request, payload: SearchPromptRequest):
     if count > VISITOR_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba.", "login_required": True}
+            detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba. Inicia sesión para seguir conversando.", "login_required": True}
         )
 
     try:
-        result = generate_prompt({"description": payload.prompt})
+        result = generate_prompt({"description": payload.prompt}, payload.history)
         return {
             "result": result,
             "remaining": max(0, VISITOR_LIMIT - count)

@@ -7,12 +7,25 @@ from src.services.llm.prompts.system_prompt import SYSTEM_PROMPT
 
 VISITOR_LIMIT = 10  # mensajes por visitante (IP o cuenta), en total
 VISITOR_TTL = 30 * 86400  # shortcut: el conteo se reinicia a los 30 días; quitar el expire si debe ser para siempre
+HISTORY_TURNS = 12  # mensajes previos del mismo chat que ve el visitante
+HISTORY_CHARS = 4000  # tope por mensaje: el historial del modo anónimo lo manda el navegador
 
 
-def generate_prompt(prompt_data):
-    """Respuesta de una sola vuelta (sin memoria ni herramientas) para visitantes."""
+def clean_history(history) -> list[dict]:
+    """Solo turnos user/assistant con texto, los últimos HISTORY_TURNS y recortados."""
+    turns = [
+        {"role": h.get("role"), "content": str(h.get("content") or "")[:HISTORY_CHARS]}
+        for h in (history or [])
+        if isinstance(h, dict) and h.get("role") in ("user", "assistant") and h.get("content")
+    ]
+    return turns[-HISTORY_TURNS:]
+
+
+def generate_prompt(prompt_data, history=None):
+    """Respuesta para visitantes: sin herramientas ni memoria a largo plazo, pero con el hilo del mismo chat."""
     return completion([
         {"role": "system", "content": SYSTEM_PROMPT},
+        *clean_history(history),
         {"role": "user", "content": prompt_data.get("description", "")},
     ])
 

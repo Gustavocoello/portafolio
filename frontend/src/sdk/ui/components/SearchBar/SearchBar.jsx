@@ -10,10 +10,9 @@ import { GrLink, GrResources } from "react-icons/gr";
 import { VscSettings, VscTools } from "react-icons/vsc";
 import { IoCloseOutline, IoDocumentTextOutline } from "react-icons/io5";
 import { apiLogger } from '../../../utils/logger';
-//import minijarvis from '../../../assets/icons/jarvis.png'
 import './SearchBar.css';
 
-const SearchBar = ({ onSearch, showIcon, isStreaming, onStop, onScrollToBottom, onContextExtracted, pendingContext, onRemoveContext, client, getToken, appId }) => {
+const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingContext, onRemoveContext, client, getToken, appId }) => {
   const [query, setQuery] = useState('');
   const textareaRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -31,7 +30,6 @@ const SearchBar = ({ onSearch, showIcon, isStreaming, onStop, onScrollToBottom, 
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const VITE_APP = import.meta.env.VITE_URL;
-  const minijarvis = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAJogAACaIBuMkGdgAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAANaSURBVFiFpddNiFVVHADw35mZnLTJUTFMKwxrqAazsaLIiMyCqAwtoygx0SnbFMzCnTtbtm0hQenCcFGgRasIooJAiLDCRTKURQ0KfTIZTuOb0+Kc4d158969941/OLxz/9/n/3XOCzFGdSGEsBJ7cBtuwa2ZNJ7XGRyKMZ6vrbOuAyGErTiMXnxbMNqDm3AzbkfA3hjj8VqKY4yVC0OYxAmsKOFbkXkmsa6W7hrGV+M7/IDFNfiX4Cd8jWsuy4F8op8RcaDOibLcwSxzBoNlvD0VGXoKN+T9Q7VymuCR/DuEJ8oYqxz4q7DfMLsJIQy2MrbgNhT2k2UGSrsghNCP8xjEj1iPI5jBYuxEH47inyy2G79gJX7D6hjjpY5GKnK5GQ0pnx9hL7Zl2qM4hvfxYMY9hxfweZa5hPsupwYe1kzTx7iAgfw9gHM5QkXchcxLmhlbygz0VTjQKOw/kQbPmyGEZ/E3Xs46DocQ9mECr2anXs9yM2UGqmpgGKfz5/YY4wcZfz1GsTzTfsdbsyM4hLAH72TaUIxxvKORGj09ij9xooA7LuW4uI4U6J9lp0ar9FelQIzx7RACHAohjMQYT0nh/b6F9Wg+/f14ALtijO9W6a91GYUQeqVUTOHuGON0B74r8U3mG4kxluYf9S6j7OS9+BfvYUkb+oDmRbSxtt66jNnINkxLF82TuFoaUtulK3oKj3Wlsxvm7MRGnJIKb1oaNhEnsb5rfRXGFmEXvsCLBXwv7sQreAl3oKdA3yd1wk5csSAHpAk2odlmp6XXTg+exo24DquwTpoTMn28IDeBLV05gB24aH6vP467Ct8NzbsiYhjPtJG7iB21HMDaXEytSiI+zd3QjhZzKk52oE1hbZ1BdDDnvh1sziE+gK/wn1SEAxjBMtzTQXZR1r17Drbl9EtbQtpuHSupmw8rZBtY2jEF2FShYLb15oVS+o8wU0N+U1Gu9T0w3CF8RejDWBv8fqlLSIPqDZxtwzfXRsspxmqcIErjdllB7lrNrhlHX8avMb+gx8oiUBcGpCE0C6+hP+9XYTyEcBZfVmpaYAQifpUq+yr80YXcnAhUvgdKYA2ely6j5RW8HaHVgXNdyu/XfJDWhbk2WlLQLz2/q2bBQlYj6+4v2vwfkBhjd9e0u3oAAAAASUVORK5CYII=";
 
 
   // ----------------- SEARCHBAR LOGIC -----------------
@@ -284,14 +282,6 @@ const SearchBar = ({ onSearch, showIcon, isStreaming, onStop, onScrollToBottom, 
   
   return (
     <div className="search-bar-wrapper">
-  {/* Ícono Jarvis (afuera del campo redondeado) */}
-  <img
-    src={minijarvis}
-    alt="Jarvis Icon"
-    className={`jarvis-icon ${!showIcon ? 'invisible-placeholder' : ''}`}
-    onClick={onScrollToBottom}
-  />
-
   {/* Caja redondeada que contiene todo lo que se expande */}
   <div className="search-box-container">
     {/* Vista previa del archivo */}
@@ -354,7 +344,7 @@ const SearchBar = ({ onSearch, showIcon, isStreaming, onStop, onScrollToBottom, 
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={handleKeyPress}
-        placeholder="Search..."
+        placeholder="Message Jarvis…"
         rows={1}
         className="search-textarea"
       />
