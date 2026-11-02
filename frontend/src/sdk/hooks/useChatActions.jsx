@@ -76,19 +76,9 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
     try {
       let res;
       if (!isAuthenticated) {
-        // --- FLUJO ANÓNIMO ---
-        const anonCount = parseInt(localStorage.getItem('anonMessageCount') || '0', 10);
-        if (anonCount >= 5) {
-          const limitMsg = "Has alcanzado el límite de 5 mensajes gratuitos. Por favor inicia sesión.";
-          updateMessageInCache(jarvisTempId, { content: limitMsg, html: `<p>${limitMsg}</p>`, stable: true }, idToSend);
-          setIsStreaming(false);
-          setIsJarvisTyping(false);
-          return;
-        }
-
+        // --- FLUJO ANÓNIMO --- (el tope de mensajes lo lleva el servidor, por IP)
         res = await sendAnonymousMessage(fullPrompt, client);
-        localStorage.setItem('anonMessageCount', String(anonCount + 1));
-        
+
         const reply = res.result || res.error || "Sin respuesta";
         updateMessageInCache(jarvisTempId, { content: reply, html: md.render(reply), stable: true }, idToSend);
 
@@ -123,7 +113,9 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
     } catch (err) {
       if (err.name !== 'AbortError') {
         streamLogger.error(err);
-        updateMessageInCache(jarvisTempId, { stable: true, html: '<p style="color: red;">Error en la solicitud.</p>' }, idToSend);
+        // El chat dibuja a partir de `content`: sin él, el error quedaba como una burbuja vacía
+        const msg = (err.message || '').replace(/^\[jarvis-sdk\][^:]*:\s*/, '') || 'No se pudo conectar con Jarvis.';
+        updateMessageInCache(jarvisTempId, { content: `⚠️ ${msg}`, html: md.render(`⚠️ ${msg}`), stable: true }, idToSend);
       }
     } finally {
       setIsJarvisTyping(false);

@@ -64,7 +64,7 @@ def handle_search_prompt(request: Request, payload: SearchPromptRequest):
     if count > VISITOR_LIMIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba.", "login_required": True}
+            detail={"error": f"Has alcanzado el límite de {VISITOR_LIMIT} mensajes de prueba. Inicia sesión para seguir conversando.", "login_required": True}
         )
 
     try:

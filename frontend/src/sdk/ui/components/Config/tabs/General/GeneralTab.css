@@ -1,124 +1,53 @@
-/*src/sdk/components/config/tabs/General/*/
-.general-tab-container {
-  width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
-}
+/* src/sdk/components/config/tabs/General/ */
+.gt { display: flex; flex-direction: column; gap: 16px; }
+.gt-state { margin: 0; color: var(--jarvis-muted); font-size: 0.9rem; }
 
-.general-tab-container h3 {
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-.profile-section {
+.gt-card {
   display: flex;
   align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--jarvis-surface);
+  border: 1px solid var(--jarvis-border);
 }
+.gt-signin { justify-content: space-between; flex-wrap: wrap; }
 
-.user-info-left {
-  flex: 0 1 60%;
-  max-width: 60%;
-  text-align: left;
-}
-
-.user-info-left p {
-  margin: 12px 0;
-  font-size: 16px;
-}
-
-.avatar-right {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.avatar, .fallback-icon {
-  width: 120px;  /* Imagen más grande */
-  height: 120px;
+.gt-avatar {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   object-fit: cover;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f0f0f0;
+}
+.gt-avatar-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--jarvis-surface-2);
+  color: var(--jarvis-muted);
+  font-size: 22px;
 }
 
-.fallback-icon svg {
-  font-size: 50px;  /* Icono más grande */
-  color: #555;
-}
+.gt-text { flex: 1; min-width: 0; }
+.gt-name { margin: 0; font-weight: 600; color: var(--jarvis-text); }
+.gt-mail { margin: 2px 0 0; font-size: 0.88rem; color: var(--jarvis-muted); overflow-wrap: anywhere; }
 
-.logout-button-wrapper {
-  margin-top: 20px;
-  text-align: left;
-}
-/* Logout Button */
-.logout-button-wrapper {
-  margin-top: 1.5rem;
-}
-
-.logout-btn {
-  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 500;
+.gt-btn {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.2);
+  white-space: nowrap;
 }
+.gt-btn.primary { background: var(--jarvis-accent); color: var(--jarvis-on-accent); }
+.gt-btn.danger { background: transparent; color: #f87171; border-color: rgba(248, 113, 113, 0.35); }
+.gt-btn.danger:hover { background: rgba(248, 113, 113, 0.1); }
+.gt-btn:focus-visible { outline: 2px solid var(--jarvis-accent); outline-offset: 2px; }
 
-.logout-btn:hover {
-  background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%);
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
-  transform: translateY(-1px);
-}
-
-.logout-btn:active {
-  transform: translateY(0);
-}
-/* Disconnect Button */
-.disconnect-btn {
-  padding: 0.75rem 1.5rem;
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  max-width: 200px;
-}
-
-.disconnect-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.5);
-  transform: translateY(-1px);
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-
-  .avatar-right {
-    margin-left: 0;
-    margin-top: 1rem;
-  }
-
-  .user-info-left {
-    width: 100%;
-  }
-
-  .logout-button-wrapper {
-    display: flex;
-    justify-content: center;
-  }
-
-  .connect-btn,
-  .disconnect-btn {
-    max-width: 100%;
-  }
+@media (max-width: 480px) {
+  .gt-card { flex-wrap: wrap; }
+  .gt-card .gt-btn { width: 100%; }
 }

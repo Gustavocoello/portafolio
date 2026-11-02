@@ -1,41 +1,31 @@
-/*============== HEADER ===============*/
-.jarvis-header {
+/*============== PORTADA (chat vacío) ===============*/
+.jarvis-empty {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  gap: 15px;
-  margin-top: 30px;
-  margin-bottom: 10px;
   text-align: center;
+  padding: 6vh 16px 0;
 }
 
-.jarvis-logo1 {
-  width: 140px;
-  height: 80px;
-  object-fit: contain;
-  padding: 4px;
-  transition: background-color 0.3s ease;
-}
-[data-theme='dark'] .jarvis-logo1 {
-  background-color: white;
-  border-radius: 50px;
+.jarvis-empty-art {
+  width: min(420px, 88vw);
+  height: auto;
+  margin-bottom: 8px;
 }
 
 .jarvis-title {
-  font-size: 2rem;
-  font-weight: bold;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin: 0;
-  white-space: nowrap;  
-  flex: 0 0 auto;
-  align-items: center; 
-  text-align: center;  
-  justify-content: center;   
+  color: var(--jarvis-text);
 }
 
 .jarvis-subtitle {
-  margin: 5px 0 0;
+  margin: 6px 0 0;
+  font-size: 1rem;
   font-weight: 500;
-  text-align: center;
+  color: var(--jarvis-muted);
 }
 
 /*============== CONTENIDO ===============*/
@@ -96,15 +86,15 @@
 }
 
 .message.user .message-bubble {
-  background-color: #f0f4f8; /* Color suave para usuario */
-  color: #333;
+  background-color: var(--jarvis-bubble-user); /* Color suave para usuario */
+  color: var(--jarvis-text);
   border-radius: 18px 18px 4px 18px;
 }
 
 .message.jarvis .message-bubble {
-  background-color: #ffffff; /* Fondo blanco para asistente */
-  color: #333;
-  border: 1px solid #eaeaea; /* Borde sutil */
+  background-color: var(--jarvis-bubble-ai); /* Fondo blanco para asistente */
+  color: var(--jarvis-text);
+  border: 1px solid var(--jarvis-border); /* Borde sutil */
   border-radius: 18px 18px 18px 4px; /* Esquinas redondeadas */
   text-align: left;
 }
@@ -128,7 +118,7 @@
 .typing-indicator {
   margin: 20px auto;
   padding: 10px 20px;
-  color: #333;
+  color: var(--jarvis-text);
   border-radius: 15px;
   max-width: 70%;
   font-size: 14px;
@@ -224,10 +214,10 @@ body {
 }
 
 .message-bubble blockquote {
-  border-left: 3px solid #ddd;
+  border-left: 3px solid var(--jarvis-border);
   padding-left: 12px;
   margin-left: 0;
-  color: #666;
+  color: var(--jarvis-muted);
   font-style: italic;
 }
 /* =========== NOTIFICATIONS =========*/
@@ -260,7 +250,7 @@ body {
 .message-html a {
   display: inline-block;
   background-color: #e0e0e0; /* gris claro */
-  color: #333; /* texto oscuro */
+  color: var(--jarvis-text); /* texto oscuro */
   padding: 4px 10px;
   border-radius: 12px;
   text-decoration: none;
@@ -286,7 +276,7 @@ body {
   left: 0;
   bottom: 125%;
   background-color: #222;
-  color: #fff;
+  color: var(--jarvis-text);
   padding: 6px 10px;
   font-size: 0.75em;
   white-space: nowrap;
@@ -307,7 +297,7 @@ body {
   align-items: center;
   height: 100vh;
   font-size: 1.2rem;
-  color: var(--text-color, #555);
+  color: var(--text-color, var(--jarvis-muted));
 }
 .chat-image-upload {
   max-width: 100%;
@@ -321,7 +311,7 @@ body {
 .load-more-indicator {
   text-align: center;
   padding: 10px;
-  color: #666;
+  color: var(--jarvis-muted);
   font-size: 14px;
   animation: pulse 2s infinite;
 }
@@ -548,7 +538,7 @@ body {
   align-items: center;
   gap: 4px;
   background: #252525; /* Color sólido para que destaque sobre la línea */
-  border: 1px solid #444;
+  border: 1px solid var(--jarvis-border);
   border-radius: 8px;
   padding: 4px 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -582,7 +572,7 @@ body {
 }
 
 .action-item:hover {
-  color: #ffffff;
+  color: var(--jarvis-text);
   background: rgba(255, 255, 255, 0.1) !important;
 }
 
@@ -642,7 +632,7 @@ body {
 .toolbar-btn {
   background: transparent !important;
   border: none !important;
-  color: #777; /* Color discreto */
+  color: var(--jarvis-muted); /* Color discreto */
   padding: 5px;
   cursor: pointer;
   display: flex;
@@ -664,7 +654,7 @@ body {
   top: 100%;
   left: 0;
   background: #1a1a1a;
-  border: 1px solid #333;
+  border: 1px solid var(--jarvis-border);
   border-radius: 8px;
   padding: 5px;
   min-width: 140px;
@@ -680,7 +670,7 @@ body {
 .assistant-menu-item {
   background: transparent !important;
   border: none !important;
-  color: #ccc !important;
+  color: var(--jarvis-muted) !important;
   padding: 8px 12px;
   text-align: left;
   font-size: 13px;
@@ -695,15 +685,15 @@ body {
 
 .assistant-menu-item:hover {
   background: rgba(255, 255, 255, 0.1) !important;
-  color: #fff !important;
+  color: var(--jarvis-text) !important;
 }
 
 /* Iconos dentro del menú */
 .assistant-menu-item svg {
   flex-shrink: 0;
-  color: #888;
+  color: var(--jarvis-muted);
 }
 
 .assistant-menu-item:hover svg {
-  color: #fff;
+  color: var(--jarvis-text);
 }

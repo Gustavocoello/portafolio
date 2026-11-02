@@ -2,7 +2,6 @@
 import React, { useEffect } from 'react';
 import MarkdownIt from 'markdown-it';
 import { TbMessagePlus } from "react-icons/tb";
-import jarvisLogo from '../../../assets/icons/jarvis00.png';
 
 // Componentes 
 import SearchBar from '../SearchBar/SearchBar';
@@ -62,8 +61,7 @@ const ChatContent = ({ isAuthenticated }) => {
     notification,
     pendingContext,
     setPendingContext,
-    chatBottomRef,
-    scrollToBottom
+    chatBottomRef
   } = useChatUI(isSuccess, lastUserMessageId, activeChatId);
 
   // --- COPIA AQUÍ TODOS TUS USEEFFECTS (initChat, sincronizar caché, etc.) ---
@@ -103,11 +101,6 @@ const ChatContent = ({ isAuthenticated }) => {
     return () => unsubscribe();
   }, [setActiveChatId]);
 
-  // 4. Limpieza de anónimos 
-  useEffect(() => { 
-    if (isAuthenticated) localStorage.removeItem('anonMessageCount'); 
-  }, [isAuthenticated]);
-
    // 5. Persistencia ID (Punto 5)
   useEffect(() => { 
     if (activeChatId) storageAdapter.setItem(activeChatId); 
@@ -138,11 +131,14 @@ const ChatContent = ({ isAuthenticated }) => {
         </button>
       )}
       <div className="content-area">
-        <div className="jarvis-header">
-          <img src={jarvisLogo} alt="Jarvis" className="jarvis-logo1" />
-          <h1 className="jarvis-title">Hi, I'm Jarvis.</h1>
-        </div>
-        <h4>How can I help you today?</h4>
+        {localMessages.length === 0 && (
+          <div className="jarvis-empty">
+            {/* Dibujo hecho con anatomy-asset: frontend/arte/mayordomo.mjs */}
+            <img src="/arte/mayordomo.svg" alt="" className="jarvis-empty-art" />
+            <h1 className="jarvis-title">Hi, I'm Jarvis.</h1>
+            <p className="jarvis-subtitle">How can I help you today?</p>
+          </div>
+        )}
         <MessageList messages={localMessages} />
         <div ref={chatBottomRef} />
         {isJarvisTyping && <div className="typing-indicator">Jarvis está escribiendo...</div>}
@@ -195,10 +191,8 @@ const ChatContent = ({ isAuthenticated }) => {
         onClearContext={() => setPendingContext([])}
         onRemoveContext={(name) => setPendingContext(prev => prev.filter(c => c.name !== name))}
         pendingContext={pendingContext}
-        showIcon={hasSentMessage}
         isStreaming={isStreaming}
         onStop={stopGeneration}
-        onScrollToBottom={scrollToBottom}
       />
       {notification && <div className="notification-memory">{notification}</div>}
     </div>

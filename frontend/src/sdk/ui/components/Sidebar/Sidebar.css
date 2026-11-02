@@ -21,8 +21,8 @@
   left: 20px;
   width: 40px;
   height: 40px;
-  background-color: #151413;
-  color: #ffffff;
+  background-color: var(--jarvis-surface);
+  color: var(--jarvis-text);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -34,7 +34,7 @@
 }
 
 .sidebar-toggle-floating:hover {
-  background-color: #333;
+  background-color: var(--jarvis-surface-2);
   transform: scale(1.1);
 }
 
@@ -47,8 +47,8 @@
   left: 20px;
   width: 40px;
   height: 40px;
-  background-color: #151413;
-  color: #ffffff;
+  background-color: var(--jarvis-surface);
+  color: var(--jarvis-text);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -61,7 +61,7 @@
 }
 
 .sidebar-settings-floating:hover {
-  background-color: #333;
+  background-color: var(--jarvis-surface-2);
   transform: scale(1.1);
 }
 
@@ -94,7 +94,7 @@
 /* ================= */
 .sidebar {
   width: 240px;
-  background: #151413;
+  background: var(--jarvis-surface);
   padding: 20px 15px;
   position: fixed;
   height: 100vh;
@@ -143,7 +143,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  color: white;
+  color: var(--jarvis-text);
   padding: 11px 10px;
   border-radius: 6px;
   text-decoration: none;
@@ -157,7 +157,7 @@
 }
 
 .sidebar-item.active {
-  background: #333;
+  background: var(--jarvis-surface-2);
   box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
 }
 
@@ -240,12 +240,12 @@
   font-weight: bold;
   font-size: 11px;
   text-transform: uppercase;
-  color: #aaa;
+  color: var(--jarvis-muted);
   letter-spacing: 0.5px;
 }
 
 .no-chats-message {
-  color: #777;
+  color: var(--jarvis-muted);
   text-align: center;
   padding: 20px;
   font-size: 0.85rem;
@@ -267,7 +267,7 @@
   background-color: transparent;
   border: none;
   padding: 10px 10px;
-  color: white;
+  color: var(--jarvis-text);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -278,12 +278,12 @@
 }
 
 .sidebar-chat-item:hover {
-  background-color: #333;
+  background-color: var(--jarvis-surface-2);
 }
 
 .sidebar-chat-item.active {
   background-color: #222;
-  color: #fff;
+  color: var(--jarvis-text);
   font-weight: bold;
 }
 
@@ -299,7 +299,7 @@
   background-color: transparent;
   border: none;
   cursor: pointer;
-  color: #aaa;
+  color: var(--jarvis-muted);
   width: 32px;
   height: 32px;
   display: flex;
@@ -312,7 +312,7 @@
 }
 
 .more-button:hover {
-  color: white;
+  color: var(--jarvis-text);
   background-color: rgba(255, 255, 255, 0.1);
   opacity: 1;
 }
@@ -324,8 +324,8 @@
   position: fixed;
   top: 15px;
   right: 20px;
-  background-color: #151413;
-  color: white;
+  background-color: var(--jarvis-surface);
+  color: var(--jarvis-text);
   border: none;
   border-radius: 50%;
   width: 40px;
@@ -340,7 +340,7 @@
 }
 
 .new-chat-button:hover {
-  background-color: #333;
+  background-color: var(--jarvis-surface-2);
 }
 
 /* ================= */

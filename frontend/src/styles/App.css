@@ -69,3 +69,13 @@ pre, code {
     max-width: 1200px;
   }
 }
+
+/* El chat ocupa toda la pantalla: sin el tope de 1200px ni el gris del layout general */
+.main-content:has(.jarvis-sdk-container) {
+  max-width: none;
+}
+body:has(.jarvis-sdk-container),
+.app-container:has(.jarvis-sdk-container),
+.main-content:has(.jarvis-sdk-container) {
+  background-color: #0b0d12;
+}
