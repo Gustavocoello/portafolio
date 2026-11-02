@@ -74,8 +74,11 @@ pre, code {
 .main-content:has(.jarvis-sdk-container) {
   max-width: none;
 }
-body:has(.jarvis-sdk-container),
-.app-container:has(.jarvis-sdk-container),
-.main-content:has(.jarvis-sdk-container) {
+/* Un solo fondo en el chat: el html (lo que se ve al estirar la página en el celular), el body y los contenedores.
+   Con "html:has(...)" estas reglas ganan a las del tema de index.css, que pintaban otro blanco. */
+html:has(.jarvis-sdk-container),
+html:has(.jarvis-sdk-container) body,
+html:has(.jarvis-sdk-container) .app-container,
+html:has(.jarvis-sdk-container) .main-content {
   background-color: var(--jarvis-bg);
 }

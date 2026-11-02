@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import dayjs from 'dayjs';
 import { CgMoreAlt } from "react-icons/cg";
-import { TbLayoutSidebar } from "react-icons/tb";
-import { FaChartBar, FaCog } from 'react-icons/fa';
+import { TbLayoutSidebar, TbMessagePlus } from "react-icons/tb";
+import { FaCog } from 'react-icons/fa';
 
 import { storageAdapter, USER_ID_KEY } from '../../../utils/storageAdapter';
 import { useJarvis } from '../../../hooks/useJarvis';
@@ -19,7 +19,6 @@ const Sidebar = ({
   onNavigate,           // ← fn que el consumidor pasa para navegar
   currentPath = '',     // ← path actual para marcar activos
   settingsPath = '/settings',
-  dashboardPath = '/dashboard',
   homePath = '/',
 }) => {
   const [isOpen, setIsOpen] = useState(false); 
@@ -159,102 +158,109 @@ const Sidebar = ({
   };
 
   // Cargar mensajes del chat seleccionado - Simplificamos el handleLoadChat
+  const closeOnPhone = () => { if (window.innerWidth <= 768) setIsOpen(false); };
+
   const handleLoadChat = (chatId) => {
     setCurrentChatId(chatId);
     chatEvents.emit('chat-loaded', { chatId });
+    closeOnPhone();
+  };
+
+  const handleNewChat = () => {
+    chatEvents.emit('new-chat');
+    closeOnPhone();
   };
   const isActive = (path) => currentPath === path;
+  const groupLabels = { today: 'Today', yesterday: 'Yesterday', previous7Days: 'Previous 7 days', previous30Days: 'Previous 30 days', older: 'Older' };
+  const hasChats = Object.values(categorizedChats).some((g) => g.length > 0);
+
   return (
     <>
-      <div className="sidebar-toggle-floating" onClick={() => setIsOpen(!isOpen)}>
+      <button
+        className="sidebar-toggle-floating"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-label={isOpen ? 'Cerrar barra lateral' : 'Abrir barra lateral'}
+        aria-expanded={isOpen}
+      >
         <TbLayoutSidebar size={20} />
-      </div>
+      </button>
 
       {!isOpen && (
         <button
           className={`sidebar-settings-floating ${isActive(settingsPath) ? 'active' : ''}`}
-          onClick={() => navigateToPath(settingsPath)} // ← onNavigate
+          onClick={() => navigateToPath(settingsPath)}
+          aria-label="Configuración"
         >
-          <FaCog size={20} />
+          <FaCog size={18} />
         </button>
       )}
 
-      <div className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
+      <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`} aria-hidden={!isOpen}>
         {isOpen && (
-          <div className="sidebar-upper">
-            <button
-              className={`sidebar-item ${isActive(dashboardPath) ? 'active' : ''}`}
-              onClick={() => onNavigate(dashboardPath)} // ← onNavigate
-            >
-              <FaChartBar className="icon" />
-              <span className="label">Dashboard</span>
-            </button>
-          </div>
-        )}
-
-        {isOpen && (
-          <div className="sidebar-section">
-            <div className="chats-scroll">
-              <ul className="chats-list">
-                {Object.entries(categorizedChats).map(([groupKey, groupChats]) =>
-                  groupChats.length > 0 && (
-                    <li key={groupKey}>
-                      <span className="chat-category">
-                        {{ today: 'Today', yesterday: 'Yesterday', previous7Days: 'Previous 7 days', previous30Days: 'Previous 30 days', older: 'Older' }[groupKey]}
-                      </span>
-                      {groupChats.map((chat) => (
-                        <div key={chat.id} className="chat-item-container">
-                          <button
-                            className={`sidebar-chat-item ${chat.id === currentChatId ? 'active' : ''}`}
-                            onClick={() => handleLoadChat(chat.id)}
-                          >
-                            <span className="label">{chat.title}</span>
-                          </button>
-                          {chat.id === currentChatId && (
-                            <button className="more-button" onClick={(e) => { e.stopPropagation(); toggleMenu(chat.id, e); }}>
-                              <CgMoreAlt size={18} />
-                            </button>
-                          )}
-                          {showMenu === chat.id && (
-                            <ChatMenu
-                              chatId={chat.id}
-                              position={menuPosition}
-                              onDelete={handleDeleteChat}
-                              onClose={() => setShowMenu(null)}
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </li>
-                  )
-                )}
-                {Object.values(categorizedChats).every(g => g.length === 0) && (
-                  <li><span className="no-chats-message">No hay chats guardados</span></li>
-                )}
-              </ul>
+          <>
+            <div className="sb-top">
+              {isAuthenticated && (
+                <button className="sb-new" onClick={handleNewChat}>
+                  <TbMessagePlus size={18} />
+                  <span>New chat</span>
+                </button>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Pie como el de Claude: la marca a la izquierda (lleva al inicio) y la configuración a la derecha */}
-        {isOpen && (
-          <div className="sidebar-footer">
-            <button className="sidebar-brand" onClick={() => onNavigate(homePath)} title="Inicio">
-              <img src="/arte/planeta.svg" alt="" className="sidebar-brand-logo art-dark" />
-              <img src="/arte/planeta-light.svg" alt="" className="sidebar-brand-logo art-light" />
-              <span>Jarvis</span>
-            </button>
-            <button
-              className={`sidebar-footer-settings ${isActive(settingsPath) ? 'active' : ''}`}
-              onClick={() => navigateToPath(settingsPath)}
-              aria-label="Configuración"
-              title="Configuración"
-            >
-              <FaCog size={17} />
-            </button>
-          </div>
+            <nav className="sb-list" aria-label="Chats">
+              {Object.entries(categorizedChats).map(([groupKey, groupChats]) =>
+                groupChats.length > 0 && (
+                  <section key={groupKey} className="sb-group">
+                    <h3 className="sb-group-title">{groupLabels[groupKey]}</h3>
+                    {groupChats.map((chat) => (
+                      <div key={chat.id} className={`sb-chat ${chat.id === currentChatId ? 'active' : ''}`}>
+                        <button className="sb-chat-title" onClick={() => handleLoadChat(chat.id)} title={chat.title}>
+                          {chat.title}
+                        </button>
+                        <button
+                          className="sb-chat-more"
+                          onClick={(e) => { e.stopPropagation(); toggleMenu(chat.id, e); }}
+                          aria-label={`Opciones de ${chat.title}`}
+                        >
+                          <CgMoreAlt size={16} />
+                        </button>
+                        {showMenu === chat.id && (
+                          <ChatMenu
+                            chatId={chat.id}
+                            position={menuPosition}
+                            onDelete={handleDeleteChat}
+                            onClose={() => setShowMenu(null)}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </section>
+                )
+              )}
+              {!hasChats && (
+                <p className="sb-empty">{isAuthenticated ? 'No chats yet.' : 'Sign in to save your chats.'}</p>
+              )}
+            </nav>
+
+            {/* Pie como el de Claude: la marca a la izquierda (lleva al inicio) y la configuración a la derecha */}
+            <div className="sidebar-footer">
+              <button className="sidebar-brand" onClick={() => onNavigate(homePath)} title="Inicio">
+                <img src="/arte/planeta.svg" alt="" className="sidebar-brand-logo art-dark" />
+                <img src="/arte/planeta-light.svg" alt="" className="sidebar-brand-logo art-light" />
+                <span>Jarvis</span>
+              </button>
+              <button
+                className={`sidebar-footer-settings ${isActive(settingsPath) ? 'active' : ''}`}
+                onClick={() => navigateToPath(settingsPath)}
+                aria-label="Configuración"
+                title="Configuración"
+              >
+                <FaCog size={17} />
+              </button>
+            </div>
+          </>
         )}
-      </div>
+      </aside>
 
       {isOpen && <div className="sidebar-overlay" onClick={() => setIsOpen(false)} />}
     </>

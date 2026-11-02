@@ -1,160 +1,159 @@
 /*src/sdk/components/Sidebar*/
-.sidebar-item,
+
+/* ============== BOTONES FLOTANTES (menú y configuración) ============== */
+.sidebar-toggle-floating,
 .sidebar-settings-floating {
-  background: none;
-  border: none;
-  cursor: pointer;
+  position: fixed;
+  left: 16px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
   padding: 0;
-  color: inherit;
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-/* ================= */
-/* == BOTÓN TOGGLE FLOTANTE == */
-/* ================= */
-.sidebar-toggle-floating {
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  width: 40px;
-  height: 40px;
+  border: 1px solid var(--jarvis-border);
+  border-radius: 11px;
   background-color: var(--jarvis-surface);
   color: var(--jarvis-text);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1002;
-  transition: all 0.3s ease-in-out;
+  transition: background-color 0.15s ease;
 }
+.sidebar-toggle-floating { top: 16px; }
+.sidebar-settings-floating { bottom: 24px; color: var(--jarvis-muted); }
+.sidebar-toggle-floating:hover,
+.sidebar-settings-floating:hover,
+.sidebar-settings-floating.active { background-color: var(--jarvis-hover); color: var(--jarvis-text); }
+.sidebar-toggle-floating:focus-visible,
+.sidebar-settings-floating:focus-visible { outline: 2px solid var(--jarvis-accent); outline-offset: 2px; }
 
-.sidebar-toggle-floating:hover {
-  background-color: var(--jarvis-surface-2);
-  transform: scale(1.1);
-}
-
-/* ================= */
-/* == SETTINGS FLOTANTE (SOLO CUANDO SIDEBAR CERRADO) == */
-/* ================= */
-.sidebar-settings-floating {
-  position: fixed;
-  bottom: 30px;
-  left: 20px;
-  width: 40px;
-  height: 40px;
-  background-color: var(--jarvis-surface);
-  color: var(--jarvis-text);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1002;
-  transition: all 0.3s ease-in-out;
-  text-decoration: none;
-}
-
-.sidebar-settings-floating:hover {
-  background-color: var(--jarvis-surface-2);
-  transform: scale(1.1);
-}
-
-.sidebar-settings-floating.active {
-  background-color: var(--jarvis-hover);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-}
-
-/* ================= */
-/* == OVERLAY == */
-/* ================= */
-.sidebar-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
-  animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* ================= */
-/* == SIDEBAR GENERAL == */
-/* ================= */
+/* ============== PANEL ============== */
 .sidebar {
   box-sizing: border-box; /* sin esto el relleno empujaba el pie fuera de la pantalla */
-  width: 240px;
-  background: var(--jarvis-surface);
-  padding: 20px 15px;
   position: fixed;
+  top: 0;
+  left: 0;
+  width: 272px;
   height: 100vh;
   height: 100dvh;
-  left: 0;
-  top: 0;
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+  padding: 64px 12px 12px; /* arriba queda el botón flotante del menú */
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  transition: transform 0.5s ease-in-out,
+  gap: 12px;
+  background: var(--jarvis-surface);
+  border-right: 1px solid var(--jarvis-border);
+  z-index: 1000;
+  transition: transform 0.25s ease;
 }
+.sidebar.closed { transform: translateX(-100%); }
+.sidebar.open { transform: translateX(0); }
 
-/* Estado CERRADO: Ocultar completamente */
-.sidebar.closed {
-  transform: translateX(-100%);
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 999;
+  animation: sbFade 0.2s ease;
 }
+@keyframes sbFade { from { opacity: 0; } to { opacity: 1; } }
 
-/* Estado ABIERTO */
-.sidebar.open {
-  transform: translateX(0);
-}
-
-.sidebar-upper {
-  margin-top: 44px; /* debajo del botón flotante del menú */
-  margin-bottom: 12px;
-}
-
-/* ================= */
-/* == ITEMS DEL SIDEBAR == */
-/* ================= */
-.sidebar-item {
+/* ============== NUEVO CHAT ============== */
+.sb-new {
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--jarvis-border);
+  border-radius: 10px;
+  background: var(--jarvis-bg);
   color: var(--jarvis-text);
-  padding: 11px 10px;
-  border-radius: 6px;
-  text-decoration: none;
+  font: inherit;
   font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.3s ease;
+}
+.sb-new:hover { background: var(--jarvis-hover); }
+.sb-new:focus-visible { outline: 2px solid var(--jarvis-accent); outline-offset: 2px; }
+
+/* ============== LISTA DE CHATS ============== */
+.sb-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--jarvis-border) transparent;
+}
+.sb-group + .sb-group { margin-top: 14px; }
+.sb-group-title {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--jarvis-muted);
 }
 
-.sidebar-item:hover {
-  background: var(--jarvis-hover);
+.sb-chat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 9px;
+}
+.sb-chat:hover { background: var(--jarvis-hover); }
+.sb-chat.active { background: var(--jarvis-hover); }
+
+.sb-chat-title {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--jarvis-text);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  border-radius: 9px;
+}
+.sb-chat.active .sb-chat-title { font-weight: 600; }
+.sb-chat-title:focus-visible { outline: 2px solid var(--jarvis-accent); outline-offset: -2px; }
+
+/* Los tres puntos aparecen al pasar el mouse o en el chat abierto */
+.sb-chat-more {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--jarvis-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.sb-chat:hover .sb-chat-more,
+.sb-chat.active .sb-chat-more,
+.sb-chat-more:focus-visible { opacity: 1; }
+.sb-chat-more:hover { color: var(--jarvis-text); background: var(--jarvis-surface-2); }
+.sb-chat-more:focus-visible { outline: 2px solid var(--jarvis-accent); outline-offset: -2px; }
+@media (hover: none) { .sb-chat-more { opacity: 1; } }
+
+.sb-empty {
+  margin: 8px 10px;
+  font-size: 0.85rem;
+  color: var(--jarvis-muted);
 }
 
-.sidebar-item.active {
-  background: var(--jarvis-surface-2);
-  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-
-/* Pie: la marca y la configuración, fijo al final */
+/* ============== PIE: marca y configuración ============== */
 .sidebar-footer {
-  margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--jarvis-border);
   display: flex;
@@ -194,207 +193,31 @@
 .sidebar-brand:focus-visible,
 .sidebar-footer-settings:focus-visible { outline: 2px solid var(--jarvis-accent); outline-offset: 2px; }
 
-/* ================= */
-/* == ICONOS Y TEXTO == */
-/* ================= */
-.icon {
-  font-size: 1.25rem;
-  min-width: 20px;
-  transition: all 0.3s ease;
-}
-
-.sidebar.open .icon {
-  margin-right: 10px;
-}
-
-.label {
-  transition: opacity 0.3s ease, width 0.3s ease;
-  white-space: nowrap;
-}
-
-/* ================= */
-/* == CHATS == */
-/* ================= */
-.sidebar-section {
-  flex: 1; 
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 0;
-}
-
-.chats-scroll {
-  overflow-y: auto;
-  flex: 1;
-  padding-right: 4px;
-}
-
-.chats-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chats-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chats-scroll::-webkit-scrollbar-thumb {
-  background: var(--jarvis-border);
-  border-radius: 3px;
-}
-
-.chats-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--jarvis-muted);
-}
-
-/* ==== Lista de chats ==== */
-.chats-list {
-  list-style: none;
-  padding-left: 0;
-  margin-top: 5px;
-  width: 100%;
-}
-
-/* ==== Categorías ==== */
-.chat-category {
-  display: block;
-  margin-top: 10px;
-  margin-bottom: 5px;
-  padding-left: 10px;
-  font-weight: bold;
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--jarvis-muted);
-  letter-spacing: 0.5px;
-}
-
-.no-chats-message {
-  color: var(--jarvis-muted);
-  text-align: center;
-  padding: 20px;
-  font-size: 0.85rem;
-}
-
-/* ==== Contenedor del chat ==== */
-.chat-item-container {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  margin-bottom: 4px;
-}
-
-/* ==== Botones de chat ==== */
-.sidebar-chat-item {
-  flex: 1;
-  text-align: left;
-  background-color: transparent;
-  border: none;
-  padding: 10px 10px;
-  color: var(--jarvis-text);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  border-radius: 6px;
-}
-
-.sidebar-chat-item:hover {
-  background-color: var(--jarvis-surface-2);
-}
-
-.sidebar-chat-item.active {
-  background-color: var(--jarvis-hover);
-  color: var(--jarvis-text);
-  font-weight: 600;
-}
-
-.sidebar-chat-item .label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
-}
-
-/* ==== Botón de 3 puntos ==== */
-.more-button {
-  background-color: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--jarvis-muted);
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  opacity: 0.6;
-  transition: all 0.3s ease;
-  flex-shrink: 0;
-}
-
-.more-button:hover {
-  color: var(--jarvis-text);
-  background-color: var(--jarvis-hover);
-  opacity: 1;
-}
-
-/* ================= */
-/* == ICONO PARA NUEVO CHAT == */
-/* ================= */
+/* ============== NUEVO CHAT FLOTANTE (en el chat, arriba a la derecha) ============== */
 .new-chat-button {
   position: fixed;
-  top: 15px;
-  right: 20px;
+  top: 16px;
+  right: 16px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--jarvis-border);
+  border-radius: 11px;
   background-color: var(--jarvis-surface);
   color: var(--jarvis-text);
-  border: none;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   z-index: 1001;
-  transition: background-color 0.3s ease;
 }
+.new-chat-button:hover { background-color: var(--jarvis-hover); }
 
-.new-chat-button:hover {
-  background-color: var(--jarvis-surface-2);
-}
-
-/* ================= */
-/* == RESPONSIVE == */
-/* ================= */
+/* ============== CELULAR ============== */
 @media (max-width: 768px) {
-  .sidebar-toggle-floating {
-    top: 15px;
-    left: 15px;
-  }
-
+  .sidebar { width: min(300px, 86vw); }
   /* la caja de texto ocupa todo el ancho de abajo: el engranaje sube junto al menú */
-  .sidebar-settings-floating {
-    bottom: auto;
-    top: 15px;
-    left: 63px;
-  }
-
-  .sidebar.open {
-    width: 240px;
-  }
-
-  .sidebar-overlay {
-    z-index: 999;
-  }
-  .sidebar.open {
-  box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
-  }
+  .sidebar-settings-floating { bottom: auto; top: 16px; left: 62px; }
 }
-@media (max-width: 360px) {
-  .sidebar.open {
-    width: 180px;
-  }
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .sidebar-overlay { transition: none; animation: none; }
 }

@@ -1,5 +1,5 @@
 // src/features/chat/ChatPage.jsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import MarkdownIt from 'markdown-it';
 import { TbMessagePlus } from "react-icons/tb";
 
@@ -126,6 +126,11 @@ const ChatContent = ({ isAuthenticated }) => {
       chatEvents.emit('chats-updated', { chatId: newChat.id });
     } catch (error) { streamLogger.error("Error creando nuevo chat:", error); }
   };
+
+  // El botón "New chat" de la barra lateral avisa por evento; la ref evita resuscribirse en cada render
+  const createNewChatRef = useRef(createNewChat);
+  createNewChatRef.current = createNewChat;
+  useEffect(() => chatEvents.on('new-chat', () => createNewChatRef.current()), []);
 
   // RENDERIZADO DEL CHAT
   return (
