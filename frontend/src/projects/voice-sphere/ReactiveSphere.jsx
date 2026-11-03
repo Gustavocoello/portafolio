@@ -34,6 +34,15 @@ const NOTICES_EVERY_MS = 60000;
 const DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
 const WAKE_WORD = /\b(tars|tarz|thars|tares|tarts)\b/i;
 const STOP_WORD = /\b(tars|tarz|basta|silencio|detente|c[aá]llate|stop)\b/i;
+// Solo para callarlo ("TARS, basta"): se calla y escucha, sin responderle a eso
+const ONLY_STOP = /^\W*(oye\W+)?(tars\W*)?(basta|para|silencio|detente|c[aá]llate|stop|espera|ya)?\W*(tars)?\W*$/i;
+const BARGE_WORDS = 2;       // palabras tuyas (no de lo que TARS está diciendo) que lo interrumpen
+const BARGE_VOICE_MS = 700;  // y el micrófono (con cancelación de eco) tiene que haber oído voz hace menos de esto
+
+/** Palabras de un texto sin tildes ni signos, para comparar lo que oyó Chrome con lo que dice TARS. */
+function words(texto) {
+  return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().match(/[a-zñ0-9]+/g) || [];
+}
 
 // "TARS" no es palabra del español: el reconocedor de Chrome casi nunca la escribe igual ("tas", "taz", "dars",
 // "tarse", "stars"...) y antes eso descartaba la frase sin avisar. Ahora una palabra parecida manda la frase a
@@ -125,7 +134,8 @@ async function startNameListener(onText, isStopped, onError) {
 /**
  * Micrófono siempre abierto mientras active. Con tars ({ hear, reply, say, notices }):
  * - Solo atiende frases con su nombre, salvo con la barra espaciadora o justo después de que habló.
- * - Habla frase a frase según llegan, y se calla si lo interrumpes (barra, "TARS", "basta"...).
+ * - Habla frase a frase según llegan, y se calla si le hablas encima (o con la barra, "TARS", "basta"...): lo que
+ *   dijiste se graba desde que empezaste y se responde sin necesitar su nombre.
  * - Cada minuto pregunta si tiene algo que avisar (correos urgentes, agenda).
  */
 function useVoice(active, tars) {
@@ -150,6 +160,8 @@ function useVoice(active, tars) {
     let followUntil = 0, startedAt = 0, lastVoice = 0, heardNameAt = -Infinity, loudSince = 0;
     let soundsLikeNameAt = -Infinity, lastHeard = "";
     let current = null;     // { controller, source } de la respuesta que está sonando
+    let saying = new Set(); // palabras de lo que TARS dice en esta respuesta: si Chrome las oye, es su eco
+    let bargedIn = false;   // le hablaron encima: la grabación en curso es la siguiente frase
     const cleanups = [];
 
     const idlePhase = () => setPhase(performance.now() < followUntil ? "listening" : "sleeping");
@@ -165,6 +177,22 @@ function useVoice(active, tars) {
       try { current.source?.stop(); } catch { /* ya terminó */ }
       current = null;
       if (ctx) chime(ctx); // ya te escucha: lo siguiente no necesita su nombre
+    };
+    const discardRecording = () => {
+      if (!recorder) return;
+      recorder.onstop = null;
+      recorder.stop();
+      recorder = null;
+    };
+    // Le hablaron encima: se calla y sigue la grabación que empezó con tu voz (si no había, empieza ya)
+    let startRecording;
+    const bargeIn = (why) => {
+      if (!current) return;
+      diag.decision = `interrumpido: ${why}`;
+      interrupt();
+      bargedIn = true;
+      if (!recorder) startRecording(performance.now(), false);
+      setPhase("listening");
     };
 
     async function start() {
@@ -211,7 +239,13 @@ function useVoice(active, tars) {
           diag.oido = text;
           if (WAKE_WORD.test(text)) heardNameAt = performance.now();
           else if (pareceTars(text)) soundsLikeNameAt = performance.now();
-          if (current && STOP_WORD.test(text)) interrupt(); // también mientras piensa
+          if (!current) return;
+          if (STOP_WORD.test(text)) return speaking ? bargeIn(`«${text}»`) : interrupt(); // también mientras piensa
+          // Mientras habla: palabras que no son las suyas y voz en el micrófono = le estás hablando
+          const tuyas = words(text).filter((w) => w.length > 2 && !saying.has(w));
+          if (speaking && tuyas.length >= BARGE_WORDS && performance.now() - lastVoice < BARGE_VOICE_MS) {
+            bargeIn(`«${text}»`);
+          }
         }, () => stopped, (error) => { diag.error = error; });
         diag.reconocedor = nameListener ? (nameListener.local ? "local" : "del navegador") : "no hay";
       }
@@ -232,6 +266,8 @@ function useVoice(active, tars) {
       // Habla y, al terminar, deja 8 s para responderle sin decir su nombre
       const talk = async (produce) => {
         busy = true;
+        saying = new Set();
+        bargedIn = false;
         const controller = new AbortController();
         current = { controller, source: null };
         try {
@@ -244,10 +280,13 @@ function useVoice(active, tars) {
         } finally {
           speaking = false;
           if (current?.controller === controller) current = null;
+          // Lo que se grabó mientras hablaba sin que lo interrumpieran es su propio eco: no se manda
+          if (!bargedIn) discardRecording();
           busy = false;
           if (!stopped) {
             openFollowUp();
-            idlePhase();
+            if (bargedIn) setPhase("listening");
+            else idlePhase();
           }
         }
       };
@@ -258,6 +297,7 @@ function useVoice(active, tars) {
         for await (const event of tarsRef.current.reply(text, controller.signal)) {
           if (event.type === "error") throw new Error(event.detail);
           if (event.type !== "audio") continue;
+          words(event.text || "").forEach((w) => saying.add(w));
           const decoded = ctx.decodeAudioData(base64ToBuffer(event.mp3)); // decodifica mientras suena la anterior
           queue = queue.then(async () => play(await decoded, controller));
         }
@@ -271,7 +311,7 @@ function useVoice(active, tars) {
           diag.whisper = heard.awake ? `con el nombre: «${heard.text}»` : "no empezaba con «TARS»";
           if (stopped || !heard.awake) return;
           chime(ctx);
-          if (heard.text) return await reply(heard.text);
+          if (heard.text && !ONLY_STOP.test(heard.text)) return await reply(heard.text);
           openFollowUp(); // solo dijo "TARS": escucha la siguiente frase
         } catch (err) {
           console.warn("TARS:", err);
@@ -283,9 +323,9 @@ function useVoice(active, tars) {
         }
       };
 
-      const startRecording = (now) => {
+      // needsName: undefined = según la barra y los 8 s de seguimiento; false = le hablaron encima
+      startRecording = (now, needsName = !ptt && now >= followUntil) => {
         const parts = [];
-        const needsName = !ptt && now >= followUntil;
         recorder = new MediaRecorder(stream);
         recorder.ondataavailable = (e) => parts.push(e.data);
         recorder.onstop = function () {
@@ -309,7 +349,7 @@ function useVoice(active, tars) {
         };
         recorder.start();
         startedAt = now;
-        if (!needsName) setPhase("listening");
+        if (!needsName && !speaking) setPhase("listening");
       };
       const stopRecording = (phraseMs) => {
         busy = true;
@@ -321,9 +361,11 @@ function useVoice(active, tars) {
       const onKeyDown = (e) => {
         if (e.code !== "Space" || e.repeat || !tarsRef.current || e.target.closest?.("input, textarea")) return;
         e.preventDefault();
-        if (speaking || current) interrupt(); // la barra también lo calla
-        else if (busy) return;
-        if (recorder) { recorder.onstop = null; recorder.stop(); recorder = null; } // descarta lo que grababa sola
+        if (speaking || current) {
+          interrupt(); // la barra también lo calla
+          bargedIn = true; // que al terminar no descarte lo que grabas con la barra
+        } else if (busy) return;
+        discardRecording(); // descarta lo que grababa sola
         busy = false;
         ptt = true;
         startRecording(performance.now());
@@ -349,6 +391,7 @@ function useVoice(active, tars) {
           await talk(async (controller) => {
             chime(ctx, 660);
             for (const text of notices) {
+              words(text).forEach((w) => saying.add(w));
               const audio = await ctx.decodeAudioData(await tarsRef.current.say(text));
               await play(audio, controller);
               if (controller.signal.aborted) break;
@@ -370,12 +413,20 @@ function useVoice(active, tars) {
         setTarsLevel((prev) => prev * 0.82 + audioLevel(voice, buffer) * 0.18);
 
         const now = performance.now();
-        // Sin reconocimiento del navegador, interrumpir es hablarle fuerte un momento
-        if (speaking && !listensLocally()) {
-          if (level > BARGE_IN_THRESHOLD) {
-            loudSince ||= now;
-            if (now - loudSince > BARGE_IN_MS) interrupt();
-          } else loudSince = 0;
+        if (speaking && tarsRef.current && !ptt) {
+          // Graba desde que empiezas a hablarle encima, para no perder el inicio si resulta que lo interrumpes;
+          // si no era voz tuya, se descarta en silencio
+          if (level > VOICE_THRESHOLD) {
+            lastVoice = now;
+            if (!recorder) startRecording(now, false);
+          } else if (recorder && !bargedIn && now - lastVoice > SILENCE_MS) discardRecording();
+          // Sin reconocimiento del navegador, interrumpir es hablarle fuerte un momento
+          if (!listensLocally()) {
+            if (level > BARGE_IN_THRESHOLD) {
+              loudSince ||= now;
+              if (now - loudSince > BARGE_IN_MS) bargeIn("voz fuerte");
+            } else loudSince = 0;
+          }
         }
         if (tarsRef.current && !busy && !ptt) {
           if (level > VOICE_THRESHOLD) {
@@ -739,7 +790,7 @@ const PHASE_TEXT = {
   sleeping: "Say \u201cTARS\u201d or hold Space",
   listening: "Listening…",
   thinking: "Thinking…",
-  speaking: "",
+  speaking: "Talk to interrupt",
 };
 
 const ReactiveSphere = forwardRef(function ReactiveSphere({ tars = null }, ref) {
