@@ -36,6 +36,13 @@ def visitor_ip(request) -> str:
     return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "unknown")
 
 
+def visitor_remaining(visitor: str) -> Optional[int]:
+    """Mensajes gratis que le quedan al visitante, sin gastar uno. None si Redis no está disponible."""
+    if not redis_client.is_available():
+        return None
+    return max(0, VISITOR_LIMIT - int(redis_client.client.get(f"visitor:messages:{visitor}") or 0))
+
+
 def visitor_message_count(visitor: str) -> Optional[int]:
     """Suma un mensaje al visitante y devuelve su total. None si Redis no está disponible."""
     if not redis_client.is_available():

@@ -29,7 +29,16 @@
 }
 
 /*============== CONTENIDO ===============*/
+/* El contenedor del chat corta lo que sobra (overflow: hidden): sin alto propio, la lista crecía y no se podía subir */
+.jarvis-sdk-chat-wrapper {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .content-area {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;  /* solo esta parte scrollea */
   padding-bottom: 20px; /* margen visual para mensajes */
   overflow-x: hidden;
@@ -272,13 +281,6 @@ body {
   display: block;
 }
 
-.load-more-indicator {
-  text-align: center;
-  padding: 10px;
-  color: var(--jarvis-muted);
-  font-size: 14px;
-  animation: pulse 2s infinite;
-}
 
 @keyframes pulse {
   0%, 100% { opacity: 0.6; }

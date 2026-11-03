@@ -1,5 +1,5 @@
 // src/sdk/hooks/useChatActions.jsx
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { chatEvents } from '../core/events';
 import { streamLogger } from '../utils/logger';
 import { sendMessage, sendAnonymousMessage } from '../core/stream';
@@ -7,7 +7,16 @@ import { sendMessage, sendAnonymousMessage } from '../core/stream';
 export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToCache, updateMessageInCache, md }, client, getToken, appId) => {
   const [isJarvisTyping, setIsJarvisTyping] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [remaining, setRemaining] = useState(null); // mensajes gratis del visitante (null = sin dato)
   const abortControllerRef = useRef(null);
+
+  // El visitante ve cuántos mensajes gratis le quedan desde que abre el chat, sin gastar uno
+  useEffect(() => {
+    if (isAuthenticated || !client) return;
+    client.get('/api/v1/search/remaining')
+      .then((r) => { if (typeof r.data?.remaining === 'number') setRemaining(r.data.remaining); })
+      .catch(() => {});
+  }, [isAuthenticated, client]);
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -78,6 +87,7 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
       if (!isAuthenticated) {
         // --- FLUJO ANÓNIMO --- (el tope de mensajes lo lleva el servidor, por IP)
         res = await sendAnonymousMessage(fullPrompt, client, history);
+        if (typeof res.remaining === 'number') setRemaining(res.remaining);
 
         const reply = res.result || res.error || "Sin respuesta";
         updateMessageInCache(jarvisTempId, { content: reply, html: md.render(reply), stable: true }, idToSend);
@@ -113,6 +123,7 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
     } catch (err) {
       if (err.name !== 'AbortError') {
         streamLogger.error(err);
+        if (!isAuthenticated && err.status === 403) setRemaining(0);
         // El chat dibuja a partir de `content`: sin él, el error quedaba como una burbuja vacía
         const msg = (err.message || '').replace(/^\[jarvis-sdk\][^:]*:\s*/, '') || 'No se pudo conectar con Jarvis.';
         updateMessageInCache(jarvisTempId, { content: msg, html: md.render(msg), error: true, stable: true }, idToSend);
@@ -124,5 +135,5 @@ export const useChatActions = (activeChatId, isAuthenticated, { appendMessageToC
     }
   }, [activeChatId, isAuthenticated, appendMessageToCache, updateMessageInCache, md, client, getToken, appId]);
 
-  return { handleNewMessage, isJarvisTyping, isStreaming, stopGeneration };
+  return { handleNewMessage, isJarvisTyping, isStreaming, stopGeneration, remaining };
 };

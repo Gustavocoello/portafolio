@@ -7,7 +7,7 @@ import { IoCloseOutline } from "react-icons/io5";
 import { apiLogger } from '../../../utils/logger';
 import './SearchBar.css';
 
-const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingContext, onRemoveContext, client, getToken, appId }) => {
+const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingContext, onRemoveContext, client, getToken, appId, notice }) => {
   const [query, setQuery] = useState('');
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -241,6 +241,7 @@ const SearchBar = ({ onSearch, isStreaming, onStop, onContextExtracted, pendingC
 
   return (
     <div className="search-bar-wrapper">
+  {notice && <div className="search-notice" role="status">{notice}</div>}
   {/* Caja redondeada que contiene todo lo que se expande */}
   <div className="search-box-container">
     {/* Vista previa del archivo */}

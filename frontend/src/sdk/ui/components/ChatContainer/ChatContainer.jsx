@@ -1,5 +1,5 @@
 // src/features/chat/ChatPage.jsx
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import MarkdownIt from 'markdown-it';
 import { TbMessagePlus } from "react-icons/tb";
 
@@ -48,15 +48,18 @@ const ChatContent = ({ isAuthenticated }) => {
     messages: cachedMessages, 
     appendMessageToCache, 
     updateMessageInCache, 
-    lastUserMessageId, 
-    isSuccess 
+    lastUserMessageId,
+    isSuccess,
+    loadOlder,
+    hasOlder
   } = useChatMessages(activeChatId, { keep: 10 , client });
 
-  const { 
-    handleNewMessage, 
-    isJarvisTyping, 
-    isStreaming, 
-    stopGeneration 
+  const {
+    handleNewMessage,
+    isJarvisTyping,
+    isStreaming,
+    stopGeneration,
+    remaining
   } = useChatActions(activeChatId, isAuthenticated, { appendMessageToCache, updateMessageInCache, md }, client, getToken, appId);
 
   const {
@@ -132,6 +135,26 @@ const ChatContent = ({ isAuthenticated }) => {
   createNewChatRef.current = createNewChat;
   useEffect(() => chatEvents.on('new-chat', () => createNewChatRef.current()), []);
 
+  // Al llegar arriba se piden los mensajes anteriores; la vista se queda donde estaba en vez de saltar
+  const scrollRef = useRef(null);
+  const heightBeforeLoad = useRef(null);
+  const handleScroll = async () => {
+    const el = scrollRef.current;
+    if (!el || el.scrollTop > 80 || !hasOlder || !isAuthenticated || heightBeforeLoad.current !== null) return;
+    heightBeforeLoad.current = el.scrollHeight;
+    if (!(await loadOlder())) heightBeforeLoad.current = null;
+  };
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || heightBeforeLoad.current === null) return;
+    el.scrollTop += el.scrollHeight - heightBeforeLoad.current;
+    heightBeforeLoad.current = null;
+  }, [localMessages]);
+
+  const remainingNotice = isAuthenticated || remaining === null ? null
+    : remaining > 0 ? `Te ${remaining === 1 ? 'queda 1 mensaje gratis' : `quedan ${remaining} mensajes gratis`}`
+    : 'Se acabaron tus mensajes gratis. Inicia sesión para seguir.';
+
   // RENDERIZADO DEL CHAT
   return (
     <div className="jarvis-sdk-chat-wrapper">
@@ -140,7 +163,7 @@ const ChatContent = ({ isAuthenticated }) => {
           <TbMessagePlus size={23} />
         </button>
       )}
-      <div className="content-area">
+      <div className="content-area" ref={scrollRef} onScroll={handleScroll}>
         {localMessages.length === 0 && (
           <div className="jarvis-empty">
             {/* Dibujo hecho con anatomy-asset: frontend/arte/planeta.mjs */}
@@ -205,6 +228,7 @@ const ChatContent = ({ isAuthenticated }) => {
         pendingContext={pendingContext}
         isStreaming={isStreaming}
         onStop={stopGeneration}
+        notice={remainingNotice}
       />
       {notification && <div className="notification-memory">{notification}</div>}
     </div>

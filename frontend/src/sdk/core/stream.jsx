@@ -76,7 +76,9 @@ export const sendAnonymousMessage = async (promptText, client, history = []) => 
     const response = await client.post('/api/v1/search/prompt', { prompt: promptText, history });
     return response.data;
   } catch (error) {
-    throw new Error(error.response?.data?.detail?.error || 'Error en mensaje anónimo');
+    const err = new Error(error.response?.data?.detail?.error || 'Error en mensaje anónimo');
+    err.status = error.response?.status; // 403 = se acabaron los mensajes gratis
+    throw err;
   }
 };
 

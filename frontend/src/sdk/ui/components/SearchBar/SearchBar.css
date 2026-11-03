@@ -11,6 +11,17 @@
   right: 0;
 }
 
+/* Aviso sobre la caja (mensajes gratis del visitante) */
+.search-notice {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--jarvis-muted);
+}
+
 /* Jarvis a la izquierda */
 .jarvis-icon {
   padding: 6px;
