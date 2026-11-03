@@ -30,7 +30,7 @@ class ContactIn(BaseModel):
 
 def _avisar(pedido: dict) -> None:
     """Correo al dueño con el pedido. Si falla queda en la tabla contact_requests."""
-    destino = os.getenv("OWNER_EMAIL") or os.getenv("MAIL_USER")
+    destino = os.getenv("OWNER_EMAIL", "").split(",")[0].strip() or os.getenv("MAIL_USER")  # el primero de la lista
     try:
         msg = EmailMessage()
         msg["Subject"] = f"Portafolio: {MOTIVOS[pedido['reason']]} ({pedido['name']})"

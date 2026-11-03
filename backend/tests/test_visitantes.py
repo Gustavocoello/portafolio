@@ -78,10 +78,12 @@ def test_sin_redis_no_cuenta(monkeypatch):
 
 def test_solo_el_dueno(monkeypatch):
     usuario = lambda email: {"user_obj": SimpleNamespace(email=email)}
-    monkeypatch.setattr(auth_middleware, "OWNER_EMAIL", "dueno@x.ec")
+    monkeypatch.setattr(auth_middleware, "OWNER_EMAILS", {"dueno@x.ec", "dueno@gmail.com"})
     assert auth_middleware.es_dueno(usuario("Dueno@X.ec"))
+    assert auth_middleware.es_dueno(usuario("dueno@gmail.com"))  # sus dos cuentas
     assert not auth_middleware.es_dueno(usuario("otro@x.ec"))
-    monkeypatch.setattr(auth_middleware, "OWNER_EMAIL", "")  # sin OWNER_EMAIL nadie es dueño
+    assert not auth_middleware.es_dueno(usuario(None))
+    monkeypatch.setattr(auth_middleware, "OWNER_EMAILS", set())  # sin OWNER_EMAIL nadie es dueño
     assert not auth_middleware.es_dueno(usuario(""))
 
 

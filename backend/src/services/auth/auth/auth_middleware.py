@@ -16,7 +16,8 @@ load_dotenv()
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL") 
 CLERK_DOMAIN = os.getenv("CLERK_DOMAIN")
 MANUAL_JWT_SECRET = os.getenv("BACKEND_JWT_SECRET")
-OWNER_EMAIL = os.getenv("OWNER_EMAIL", "").strip().lower()
+# Las cuentas de Gustavo, separadas por coma (gcoello@previseguros.ec y coellog634@gmail.com). Nadie más.
+OWNER_EMAILS = {e.strip().lower() for e in os.getenv("OWNER_EMAIL", "").split(",") if e.strip()}
 
 # Cache para las JWKS
 cached_jwks = None
@@ -153,8 +154,9 @@ def authenticate(token: str, app_id: str) -> dict:
 
 
 def es_dueno(user: dict) -> bool:
-    """Solo el dueño (OWNER_EMAIL) usa las herramientas personales (correo, calendario...), la memoria y TARS."""
-    return bool(OWNER_EMAIL) and (user["user_obj"].email or "").lower() == OWNER_EMAIL
+    """Solo las cuentas de OWNER_EMAIL usan las herramientas personales (correo, calendario, archivos y vault), la
+    memoria y TARS."""
+    return (user["user_obj"].email or "").strip().lower() in OWNER_EMAILS
 
 
 def get_owner(user: dict = Depends(get_current_user)) -> dict:
