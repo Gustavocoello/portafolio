@@ -2,8 +2,8 @@
 import re
 import unicodedata
 
-# "TARS", "Oye TARS", "Hey Tars, ..." al inicio de la frase; Whisper a veces escribe Tarz o Thars
-NOMBRE = re.compile(r"^\W*(?:(?:oye|hey|ey|hola|ok)\W+)?(?:tars|tarz|thars|tares)\b\W*")
+# "TARS", "Oye TARS", "Hey Tars, ..." al inicio de la frase; Whisper a veces escribe Tarz, Thars, Taz o Tarse
+NOMBRE = re.compile(r"^\W*(?:(?:oye|hey|ey|hola|ok)\W+)?(?:tars|tarz|thars|tharz|tares|tarse|taz)\b\W*")
 
 
 def quitar_nombre(texto: str) -> str | None:

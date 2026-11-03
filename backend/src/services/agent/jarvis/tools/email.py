@@ -11,11 +11,13 @@ from src.core.logging import get_logger
 logger = get_logger("email_tools")
 
 MAX_CUERPO = 4000  # caracteres por correo: suficiente para resumir sin llenar el contexto
+INICIO_CORREO = 65536  # bytes que bajan los avisos por correo: alcanza para cabeceras y texto, sin los adjuntos
+IMAP_TIMEOUT = 20      # sin esto un servidor lento dejaba colgada la petición (y su hilo) sin límite
 
 
 def _conectar() -> imaplib.IMAP4_SSL:
     # shortcut: un solo buzón desde el .env (el de Gustavo); pasar a credenciales por usuario si hay más usuarios
-    imap = imaplib.IMAP4_SSL(os.environ["MAIL_IMAP_HOST"], int(os.getenv("MAIL_IMAP_PORT", "993")))
+    imap = imaplib.IMAP4_SSL(os.environ["MAIL_IMAP_HOST"], int(os.getenv("MAIL_IMAP_PORT", "993")), timeout=IMAP_TIMEOUT)
     imap.login(os.environ["MAIL_USER"], os.environ["MAIL_PASSWORD"])
     imap.select("INBOX", readonly=True)  # solo lectura: leer no marca los correos como vistos
     return imap
@@ -59,19 +61,24 @@ def correos_pendientes(limite: int = 10) -> str:
         imap.logout()
 
 
-def sin_leer(limite: int = 20) -> list[dict]:
-    """Correos sin leer más recientes como datos: uid, remitente, asunto y el inicio del texto."""
+def sin_leer(limite: int = 20, omitir=(), solo_uids: bool = False) -> tuple[list[str], list[dict]]:
+    """Correos sin leer más recientes: (uids, correos con uid, remitente, asunto y el inicio del texto).
+
+    Solo baja los que no están en `omitir`, y de cada uno solo el inicio: antes bajaba completos (con adjuntos)
+    los 20 cada minuto y los avisos de TARS tardaban más de un minuto.
+    """
     imap = _conectar()
     try:
         _, data = imap.uid("search", None, "UNSEEN")
+        uids = [u.decode() for u in data[0].split()[-limite:][::-1]]
         correos = []
-        for uid in data[0].split()[-limite:][::-1]:
-            _, partes = imap.uid("fetch", uid, "(BODY.PEEK[])")
-            if not partes or partes[0] is None:
+        for uid in ([] if solo_uids else [u for u in uids if u not in omitir]):
+            _, partes = imap.uid("fetch", uid, f"(BODY.PEEK[]<0.{INICIO_CORREO}>)")
+            if not partes or not isinstance(partes[0], tuple):
                 continue
             msg = email.message_from_bytes(partes[0][1])
-            correos.append({"uid": uid.decode(), "de": _h(msg["From"]), "asunto": _h(msg["Subject"]), "texto": _texto(msg)[:500]})
-        return correos
+            correos.append({"uid": uid, "de": _h(msg["From"]), "asunto": _h(msg["Subject"]), "texto": _texto(msg)[:500]})
+        return uids, correos
     finally:
         imap.logout()
 

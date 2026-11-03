@@ -77,10 +77,10 @@ def _avisos_correo(user_id: str) -> list[str]:
     from src.services.agent.jarvis.tools.email import sin_leer
     vistos = f"tars:correos:{user_id}"
     primera = not _r().exists(vistos)
-    correos = sin_leer()
-    nuevos = [c for c in correos if not _r().sismember(vistos, c["uid"])]
-    if correos:
-        _r().sadd(vistos, *[c["uid"] for c in correos])
+    # solo se bajan los correos que no se vieron antes; la primera vez basta con anotar los ids
+    uids, nuevos = sin_leer(omitir=set() if primera else _r().smembers(vistos), solo_uids=primera)
+    if uids:
+        _r().sadd(vistos, *uids)
     _r().sadd(vistos, "-")  # marca que ya hubo una primera revisión aunque no haya correos
     _r().expire(vistos, 30 * DIA)
     if primera or not nuevos:  # la primera vez solo toma nota: no lee de golpe todo lo pendiente

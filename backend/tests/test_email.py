@@ -35,3 +35,21 @@ def test_pendientes_y_leer(monkeypatch):
     assert "Póliza vencida" in lista
     assert "Renovar hoy" in correo.leer_correo("[7]")
     assert "No existe" in correo.leer_correo("99")
+
+
+def test_sin_leer_solo_baja_lo_nuevo(monkeypatch):
+    fake = FakeIMAP({b"7": _msg("Siniestro", "ana@x.ec", "Choque"), b"9": _msg("Hola", "b@x.ec", "Nada")})
+    pedidos = []
+    original = fake.uid
+    fake.uid = lambda cmd, uid, query: (pedidos.append((cmd, uid, query)), original(cmd, uid, query))[1]
+    monkeypatch.setattr(correo, "_conectar", lambda: fake)
+
+    uids, correos = correo.sin_leer(omitir={"9"})
+    assert uids == ["9", "7"]
+    assert [c["uid"] for c in correos] == ["7"] and correos[0]["texto"].startswith("Choque")
+    assert [p[1] for p in pedidos if p[0] == "fetch"] == ["7"]  # el ya visto no se vuelve a bajar
+    assert all("<0." in p[2] for p in pedidos if p[0] == "fetch")  # solo el inicio, sin adjuntos
+
+    pedidos.clear()
+    assert correo.sin_leer(solo_uids=True) == (["9", "7"], [])
+    assert not [p for p in pedidos if p[0] == "fetch"]

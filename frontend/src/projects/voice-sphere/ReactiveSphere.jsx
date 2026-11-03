@@ -28,10 +28,30 @@ const BARGE_IN_MS = 400;
 const SILENCE_MS = 900;      // silencio que cierra una frase
 const MIN_PHRASE_MS = 400;   // más corto que esto es un ruido, no una frase
 const FOLLOW_UP_MS = 8000;   // tras hablar con TARS, la siguiente frase no necesita su nombre (como Alexa)
-const NAME_GRACE_MS = 600;   // el reconocimiento del navegador llega un poco después de que termina la frase
+const NAME_GRACE_MS = 1000;  // el reconocimiento del navegador llega un poco después de que termina la frase
 const NOTICES_EVERY_MS = 60000;
 const WAKE_WORD = /\b(tars|tarz|thars|tares|tarts)\b/i;
 const STOP_WORD = /\b(tars|tarz|basta|silencio|detente|c[aá]llate|stop)\b/i;
+
+// "TARS" no es palabra del español: el reconocedor de Chrome casi nunca la escribe igual ("tas", "taz", "dars",
+// "tarse", "stars"...) y antes eso descartaba la frase sin avisar. Ahora una palabra parecida manda la frase a
+// Whisper, que confirma el nombre (lo que no empiece con "TARS" se ignora en el backend).
+const PARECIDAS = new Set(["taz", "tarse", "tarsis", "tarso", "taras", "stars", "star", "thar", "tharz", "thaz"]);
+function distancia(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return d[a.length][b.length];
+}
+/** true si alguna de las tres primeras palabras suena a "TARS" ("Oye tas, ¿qué hora es?"). */
+function pareceTars(texto) {
+  const palabras = texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().match(/[a-z]+/g) || [];
+  return palabras.slice(0, 3).some((p) => PARECIDAS.has(p) || (p.length >= 3 && p.length <= 5 && distancia(p, "tars") <= 1));
+}
 
 function audioLevel(analyser, buffer) {
   analyser.getByteFrequencyData(buffer);
@@ -113,6 +133,7 @@ function useVoice(active, tars) {
     let speaking = false;
     let ptt = false;        // barra espaciadora presionada
     let followUntil = 0, startedAt = 0, lastVoice = 0, heardNameAt = -Infinity, loudSince = 0;
+    let soundsLikeNameAt = -Infinity, lastHeard = "";
     let current = null;     // { controller, source } de la respuesta que está sonando
     const cleanups = [];
 
@@ -171,7 +192,9 @@ function useVoice(active, tars) {
 
       if (tarsRef.current) {
         nameListener = await startNameListener((text) => {
+          lastHeard = text;
           if (WAKE_WORD.test(text)) heardNameAt = performance.now();
+          else if (pareceTars(text)) soundsLikeNameAt = performance.now();
           if (current && STOP_WORD.test(text)) interrupt(); // también mientras piensa
         }, () => stopped);
       }
@@ -255,7 +278,13 @@ function useVoice(active, tars) {
           if (!listensLocally()) return handle(blob, true); // sin reconocimiento en el navegador: Whisper busca el nombre
           // Solo se manda a Groq si el navegador oyó "TARS" en esta frase
           const phraseStart = startedAt;
-          setTimeout(() => (heardNameAt >= phraseStart - 1500 ? handle(blob, false) : done()), NAME_GRACE_MS);
+          setTimeout(() => {
+            if (heardNameAt >= phraseStart - 1500) return handle(blob, false);
+            if (soundsLikeNameAt >= phraseStart - 1500) return handle(blob, true); // Whisper confirma el nombre
+            // Para ajustar la detección: en la consola (F12) se ve qué entendió el navegador
+            console.info(`TARS: sin su nombre, ignoro «${lastHeard}»`);
+            done();
+          }, NAME_GRACE_MS);
         };
         recorder.start();
         startedAt = now;

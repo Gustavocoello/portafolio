@@ -23,3 +23,10 @@ def test_eventos_por_empezar():
 def test_frases():
     assert frases("Tienes dos correos. Uno es de Ana… ¿Lo leo? Sí.") == ["Tienes dos correos.", "Uno es de Ana…", "¿Lo leo?", "Sí."]
     assert frases("  ") == []
+
+
+def test_nombre_mal_escrito_por_whisper():
+    from src.services.agent.jarvis.voz import quitar_nombre
+    assert quitar_nombre("Taz, ¿qué hora es?") == "¿qué hora es?"
+    assert quitar_nombre("Oye tarse, lee mis correos") == "lee mis correos"
+    assert quitar_nombre("Tasa de interés del banco") is None
