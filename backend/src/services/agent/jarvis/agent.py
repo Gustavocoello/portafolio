@@ -13,6 +13,7 @@ from src.services.agent.common.base_agent import BaseAgent
 from src.services.llm.chat.llm_router import get_langchain_llm
 
 from src.services.agent.jarvis.tool import build_jarvis_tools
+from src.services.agent.jarvis.tools.archivos import archivos_disponibles, build_archivos_tools, necesita_archivos
 
 def get_jarvis_template():
     """Genera el template maestro leyendo AGENT.md y agregando sufijos de LangChain."""
@@ -49,6 +50,14 @@ class JarvisAgent(BaseAgent):
         if client_type == "tars":  # mismas herramientas, voz y personalidad de TARS
             template += "\n" + (Path(__file__).resolve().parent / "TARS.md").read_text(encoding="utf-8")
         super().__init__(llm, tools, template)
+        # Archivos y vault de home-lab-laptop: un segundo grafo con esas herramientas, que solo responde cuando el
+        # mensaje las necesita (cada herramienta agranda todos los pedidos al modelo)
+        self.app_archivos = self._grafo(tools + build_archivos_tools(user_id)) if archivos_disponibles() else None
+
+    def _app_para(self, instruction: str, user_id: str):
+        if self.app_archivos and necesita_archivos(instruction, user_id):
+            return self.app_archivos
+        return self.app
 
 
 # ─── Factory con caché + TTL de 12 horas ────────────────────────────────────

@@ -1,0 +1,19 @@
+# MCP de archivos en home-lab-laptop (lo despliega scripts/archivos-homelab.sh, no el runner).
+# El backend de previseguros-server lo llama por Tailscale: MCP_ARCHIVOS=http://100.68.212.44:8005/mcp-server/mcp
+services:
+  archivos:
+    build: .
+    restart: unless-stopped
+    # El usuario de la laptop (1000): así Syncthing puede seguir sincronizando lo que TARS crea o mueve en el vault
+    user: "1000:1000"
+    env_file: .env   # MCP_SECRET_KEY, la misma del backend
+    environment:
+      ARCHIVOS_RAICES: vault=/datos/vault,archivos=/datos/archivos
+      ARCHIVOS_REGISTRO: /datos/registro/cambios.jsonl
+    volumes:
+      - ${HOME}/vault:/datos/vault
+      - ${HOME}/archivos:/datos/archivos
+      - ./registro:/datos/registro
+    ports:
+      - "8005:8005"   # todo pedido sin el JWT del backend recibe 401
+    mem_limit: 256m

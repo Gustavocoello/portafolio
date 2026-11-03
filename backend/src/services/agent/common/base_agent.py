@@ -13,6 +13,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 import os 
 import gc
 import time
+import uuid
 from pathlib import Path
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
@@ -83,12 +84,20 @@ class BaseAgent:
         self.system_prompt = template
         self.memory = PostgresSaver(_postgres_pool)
         self.memory.setup()
-        self.app = create_react_agent(          # Construimos el Grafo del Agente
+        self.app = self._grafo(self.tools)
+
+    def _grafo(self, tools: list):
+        """El grafo ReAct con esas herramientas; todos los grafos de un agente comparten la memoria (mismo hilo)."""
+        return create_react_agent(
             model=self.llm,
-            tools=self.tools,
-            checkpointer=self.memory,            
+            tools=tools,
+            checkpointer=self.memory,
             prompt=self._dynamic_state_modifier,  # Reemplaza el PromptTemplate
         )
+
+    def _app_para(self, instruction: str, user_id: str):
+        """Qué grafo responde este mensaje. Un agente puede cargar herramientas extra solo cuando hacen falta."""
+        return self.app
 
     
     # --- Save Logs ---
@@ -193,6 +202,8 @@ class BaseAgent:
                 "thread_id": current_thread_id or "default-thread",
                 "user_id": user_id,
                 "session_id": thread_id,
+                # Identifica este mensaje: las herramientas que piden confirmación exigen que el "sí" llegue en otro
+                "turno": session_id or uuid.uuid4().hex,
                 "dynamic_rules": dynamic_rules
             },
             "recursion_limit": 15 # Limitar recursión para evitar loops infinitos
@@ -205,7 +216,7 @@ class BaseAgent:
         try:
             # MAGIA: Envolvemos la llamada al agente en el callback
             with get_openai_callback() as cb:
-                state = self.app.invoke(
+                state = self._app_para(original_instruction, user_id).invoke(
                     {"messages": [HumanMessage(content=instruction)]}, 
                     config=config
                 )
@@ -284,6 +295,7 @@ class BaseAgent:
                 "thread_id": current_thread_id or "default-thread",
                 "user_id": user_id,
                 "session_id": thread_id,
+                "turno": session_id or uuid.uuid4().hex,
                 "dynamic_rules": dynamic_rules
             }, 
             "recursion_limit": 35
@@ -295,7 +307,7 @@ class BaseAgent:
         
         try:
             # 1. Ejecutamos el stream y cedemos los datos al CLI/UI
-            for event in self.app.stream(inputs, config=config, stream_mode="values"):
+            for event in self._app_para(original_instruction, user_id).stream(inputs, config=config, stream_mode="values"):
                 
                 # Extraemos el texto más reciente para luego contar tokens
                 if "messages" in event and len(event["messages"]) > 0:

@@ -9,6 +9,8 @@ services:
       MCP_CALENDAR: http://mcp-calendar:8001/mcp-server/mcp
       MCP_NOTION: http://mcp-notion:8002/mcp-server/mcp
       MCP_GITHUB: http://mcp-github:8004/mcp-server/mcp
+      # Archivos y vault: el MCP corre en home-lab-laptop y se llega por Tailscale (backend/servers/mcp_servers/files)
+      MCP_ARCHIVOS: http://100.68.212.44:8005/mcp-server/mcp
     # Solo escucha en la máquina: la entrada desde internet es el túnel de Cloudflare.
     ports:
       - "127.0.0.1:8096:8000"
