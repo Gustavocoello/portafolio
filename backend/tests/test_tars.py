@@ -30,3 +30,9 @@ def test_nombre_mal_escrito_por_whisper():
     assert quitar_nombre("Taz, ¿qué hora es?") == "¿qué hora es?"
     assert quitar_nombre("Oye tarse, lee mis correos") == "lee mis correos"
     assert quitar_nombre("Tasa de interés del banco") is None
+
+
+def test_hora_en_espanol_y_al_momento():
+    from datetime import datetime
+    from src.core.time_helper import fecha_hora_texto, TIMEZONE
+    assert fecha_hora_texto(TIMEZONE.localize(datetime(2026, 11, 3, 9, 5))) == "martes 03 de noviembre de 2026, 09:05"

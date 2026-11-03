@@ -16,9 +16,10 @@ from src.services.agent.jarvis.tool import build_jarvis_tools
 
 def get_jarvis_template():
     """Genera el template maestro leyendo AGENT.md y agregando sufijos de LangChain."""
-    now = get_now()
-    current_date = now.strftime("%A %d de %B de %Y, %H:%M")
-    
+    # La hora NO se escribe aquí: el agente vive 12 h en caché y TARS daba la hora de cuando se creó.
+    # BaseAgent cambia CURRENT_DATE_PLACEHOLDER por la hora real en cada mensaje.
+    current_date = "CURRENT_DATE_PLACEHOLDER"
+
     # 1. Leer dinámicamente el archivo AGENT.md
     agent_md_path = Path(__file__).resolve().parent / "AGENT.md"
     with open(agent_md_path, "r", encoding="utf-8") as f:
@@ -34,8 +35,7 @@ LANGUAGE RULE: Always respond in the exact same language the user used.
 """
 
     # 3. Unir todo y reemplazar la fecha
-    full_template = agent_identity_and_rules + "\n" + langchain_suffix
-    return full_template.replace("CURRENT_DATE_PLACEHOLDER", current_date)
+    return agent_identity_and_rules + "\n" + langchain_suffix
 
 
 class JarvisAgent(BaseAgent):

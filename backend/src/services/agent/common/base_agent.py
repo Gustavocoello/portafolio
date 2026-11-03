@@ -28,6 +28,7 @@ from src.database.settings.connection import DATABASE_URL  # Importamos TU URL y
 
 from .helpers import _generate_feature_name
 from src.core.logging import get_logger 
+from src.core.time_helper import fecha_hora_texto
 from src.database.models.models import TokenLog 
 from src.database.settings.connection import get_db
 from .utils.session_manager import create_agent_session, complete_session, fail_session 
@@ -120,8 +121,8 @@ class BaseAgent:
         """
         config = config or {}
         
-        # 1. Base System Prompt
-        sys_content = self.system_prompt
+        # 1. Base System Prompt, con la hora de Ecuador de AHORA (no la de cuando se creó el agente)
+        sys_content = self.system_prompt.replace("CURRENT_DATE_PLACEHOLDER", fecha_hora_texto())
         
         # 2. Extraer las reglas dinámicas desde la configuración (pasadas en stream/run_task)
         dynamic_rules = config.get("configurable", {}).get("dynamic_rules", "")

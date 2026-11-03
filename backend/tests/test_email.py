@@ -53,3 +53,48 @@ def test_sin_leer_solo_baja_lo_nuevo(monkeypatch):
     pedidos.clear()
     assert correo.sin_leer(solo_uids=True) == (["9", "7"], [])
     assert not [p for p in pedidos if p[0] == "fetch"]
+
+
+class FakeBuzon:
+    """IMAP con dos carpetas; registra lo que se pidió."""
+    def __init__(self):
+        self.carpetas = {"INBOX": {b"7": (_msg("Póliza", "ana@x.ec", "Renovar"), True), b"9": (_msg("Hola", "b@x.ec", "Nada"), False)},
+                         "INBOX.Sent": {b"3": (_msg("Cotización", "yo@x.ec", "Adjunto"), True)}}
+        self.actual, self.busquedas, self.literal = "INBOX", [], None
+
+    def list(self):
+        return "OK", [rb'(\HasNoChildren) "." "INBOX"', rb'(\HasNoChildren \Sent) "." "INBOX.Sent"']
+
+    def select(self, carpeta, readonly=False):
+        self.actual = carpeta.strip('"')
+
+    def uid(self, cmd, *args):
+        mensajes = self.carpetas[self.actual]
+        if cmd == "search":
+            self.busquedas.append((args, self.literal))
+            return "OK", [b" ".join(mensajes)]
+        uid, query = args
+        assert "PEEK" in query
+        datos, visto = mensajes.get(uid if isinstance(uid, bytes) else uid.encode(), (None, False))
+        if not datos:
+            return "OK", [None]
+        return "OK", [((rb"1 (UID 1 FLAGS (\Seen) BODY[]" if visto else b"1 (UID 1 FLAGS () BODY[]"), datos)]
+
+    def logout(self):
+        pass
+
+
+def test_buscar_todo_el_buzon_y_enviados(monkeypatch):
+    buzon = FakeBuzon()
+    monkeypatch.setattr(correo, "_conectar", lambda: buzon)
+
+    lista = correo.buscar_correos(texto="póliza", dias=30)
+    assert lista.startswith("2 correos")
+    assert "Póliza" in lista and "Hola" in lista
+    assert "[9]" in lista and lista.count("(sin leer)") == 1  # leídos y no leídos
+    args, literal = buzon.busquedas[-1]
+    assert args[:2] == ("CHARSET", "UTF-8") and "SINCE" in args and literal == "póliza".encode()
+
+    enviados = correo.buscar_correos(enviados=True)
+    assert "[enviados:3]" in enviados and "Cotización" in enviados
+    assert "Adjunto" in correo.leer_correo("[enviados:3]")

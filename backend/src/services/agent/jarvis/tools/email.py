@@ -4,9 +4,11 @@ import email
 import imaplib
 from email.header import decode_header, make_header
 from email.utils import parsedate_to_datetime
+from datetime import timedelta
 
 from langchain_core.tools import tool
 from src.core.logging import get_logger
+from src.core.time_helper import get_now
 
 logger = get_logger("email_tools")
 
@@ -83,15 +85,74 @@ def sin_leer(limite: int = 20, omitir=(), solo_uids: bool = False) -> tuple[list
         imap.logout()
 
 
-def leer_correo(uid: str) -> str:
-    """Devuelve remitente, asunto y texto de un correo por su id."""
+def _carpeta_enviados(imap) -> str | None:
+    """Nombre de la carpeta de enviados en este servidor ("Sent", "INBOX.Sent", "Enviados"...)."""
+    _, carpetas = imap.list()
+    nombres = []
+    for linea in carpetas or []:
+        texto = linea.decode(errors="replace") if isinstance(linea, bytes) else str(linea)
+        nombre = texto.rsplit(' "', 1)[-1].strip('"') if ' "' in texto else texto.split()[-1]
+        if "\\Sent" in texto:
+            return nombre
+        nombres.append(nombre)
+    return next((n for n in nombres if n.lower().split(".")[-1].split("/")[-1] in ("sent", "sent items", "enviados", "sent messages")), None)
+
+
+def buscar_correos(texto: str = "", remitente: str = "", dias: int = 7, limite: int = 10, enviados: bool = False) -> str:
+    """Busca en todo el buzón, leídos y no leídos (o en enviados): los más recientes primero."""
     imap = _conectar()
     try:
-        _, partes = imap.uid("fetch", uid.strip("[] "), "(BODY.PEEK[])")
+        prefijo = ""
+        if enviados:
+            carpeta = _carpeta_enviados(imap)
+            if not carpeta:
+                return "No encontré la carpeta de enviados."
+            imap.select(f'"{carpeta}"', readonly=True)
+            prefijo = "enviados:"
+        criterios = ["SINCE", (get_now() - timedelta(days=max(1, dias))).strftime("%d-%b-%Y")]
+        if remitente:
+            criterios += ["TO" if enviados else "FROM", f'"{remitente}"']
+        if texto:  # el texto va como literal UTF-8: así sirven tildes y eñes
+            imap.literal = texto.encode("utf-8")
+            criterios += ["TEXT"]
+            _, data = imap.uid("search", "CHARSET", "UTF-8", *criterios)
+        else:
+            _, data = imap.uid("search", None, *criterios)
+        todos = data[0].split() if data and data[0] else []
+        if not todos:
+            return "No encontré correos con esos datos."
+        lineas = []
+        for uid in todos[-limite:][::-1]:
+            _, partes = imap.uid("fetch", uid, "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])")
+            if not partes or not isinstance(partes[0], tuple):
+                continue
+            msg = email.message_from_bytes(partes[0][1])
+            leido = "" if enviados or b"\\Seen" in partes[0][0] else " (sin leer)"
+            linea = _resumen(uid, msg).replace(f"[{uid.decode()}]", f"[{prefijo}{uid.decode()}]", 1)
+            if enviados:
+                linea = linea.replace("| De: ", f"| Para: {_h(msg['To'])} | De: ", 1)
+            lineas.append(linea + leido)
+        return f"{len(todos)} correos en los últimos {dias} días. Los más recientes:\n" + "\n".join(lineas)
+    finally:
+        imap.logout()
+
+
+def leer_correo(uid: str) -> str:
+    """Devuelve remitente, asunto y texto de un correo por su id ("123" o "enviados:45")."""
+    imap = _conectar()
+    try:
+        limpio = uid.strip("[] ")
+        if limpio.startswith("enviados:"):
+            carpeta = _carpeta_enviados(imap)
+            if not carpeta:
+                return "No encontré la carpeta de enviados."
+            imap.select(f'"{carpeta}"', readonly=True)
+            limpio = limpio.split(":", 1)[1]
+        _, partes = imap.uid("fetch", limpio, "(BODY.PEEK[])")
         if not partes or partes[0] is None:
             return f"No existe el correo {uid}."
         msg = email.message_from_bytes(partes[0][1])
-        return _resumen(uid.strip("[] ").encode(), msg) + "\n\n" + _texto(msg)[:MAX_CUERPO]
+        return _resumen(limpio.encode(), msg) + "\n\n" + _texto(msg)[:MAX_CUERPO]
     finally:
         imap.logout()
 
@@ -112,12 +173,24 @@ def build_email_tools() -> list:
             return f"No pude leer el correo: {e}"
 
     @tool
+    def email_buscar(texto: str = "", remitente: str = "", dias: int = 7, limite: int = 10, enviados: bool = False) -> str:
+        """Busca en TODO el buzón de trabajo, leídos y no leídos (id, fecha, remitente, asunto).
+        Úsala para correos ya leídos, de una persona o empresa, sobre un tema, o de varios días atrás.
+        texto: palabras del asunto o del cuerpo. remitente: nombre o correo de quien escribió.
+        dias: cuántos días hacia atrás (por defecto 7). enviados=True busca en los correos que Gustavo envió."""
+        try:
+            return buscar_correos(texto, remitente, dias, limite, enviados)
+        except Exception as e:
+            logger.error(f"[EMAIL] {e}")
+            return f"No pude buscar en el correo: {e}"
+
+    @tool
     def email_leer(uid: str) -> str:
-        """Lee el contenido de un correo. Input: el id que aparece entre corchetes en email_pendientes."""
+        """Lee el contenido de un correo. Input: el id que aparece entre corchetes en email_pendientes o email_buscar."""
         try:
             return leer_correo(uid)
         except Exception as e:
             logger.error(f"[EMAIL] {e}")
             return f"No pude abrir el correo {uid}: {e}"
 
-    return [email_pendientes, email_leer]
+    return [email_pendientes, email_buscar, email_leer]
