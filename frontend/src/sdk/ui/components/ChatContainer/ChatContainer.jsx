@@ -138,8 +138,10 @@ const ChatContent = ({ isAuthenticated }) => {
   // Al llegar arriba se piden los mensajes anteriores; la vista se queda donde estaba en vez de saltar
   const scrollRef = useRef(null);
   const heightBeforeLoad = useRef(null);
+  const pegadoAbajo = useRef(true);
   const handleScroll = async () => {
     const el = scrollRef.current;
+    if (el) pegadoAbajo.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (!el || el.scrollTop > 80 || !hasOlder || !isAuthenticated || heightBeforeLoad.current !== null) return;
     heightBeforeLoad.current = el.scrollHeight;
     if (!(await loadOlder())) heightBeforeLoad.current = null;
@@ -150,6 +152,15 @@ const ChatContent = ({ isAuthenticated }) => {
     el.scrollTop += el.scrollHeight - heightBeforeLoad.current;
     heightBeforeLoad.current = null;
   }, [localMessages]);
+
+  // Mientras Jarvis escribe, la vista lo sigue hacia abajo; si el usuario subió a leer algo, no lo arrastra
+  useEffect(() => {
+    const el = scrollRef.current;
+    const ultimo = localMessages[localMessages.length - 1];
+    if (el && heightBeforeLoad.current === null && (pegadoAbajo.current || ultimo?.role === 'user')) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [localMessages, isJarvisTyping]);
 
   const remainingNotice = isAuthenticated || remaining === null ? null
     : remaining > 0 ? `Te ${remaining === 1 ? 'queda 1 mensaje gratis' : `quedan ${remaining} mensajes gratis`}`

@@ -660,3 +660,36 @@ body {
 .message-html th, .message-html td { border: 1px solid var(--jarvis-border); padding: 6px 10px; text-align: left; }
 .message-html th { background: var(--jarvis-surface-2); font-weight: 600; }
 .message-html img { max-width: 100%; border-radius: 8px; }
+
+/*============ ESTRUCTURA DEL CHAT ============
+   El contenedor del SDK mide 100dvh con overflow: hidden. Antes la zona de mensajes no tenía alto en escritorio:
+   crecía sin límite, el contenedor la recortaba y la rueda del mouse no hacía nada. Además la caja de texto era
+   "fixed" y tapaba el último mensaje. Ahora es una columna: mensajes (los que scrollean) arriba y la caja debajo. */
+.jarvis-sdk-chat-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.chat-layer { min-width: 0; }
+.jarvis-sdk-chat-wrapper .content-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.jarvis-sdk-chat-wrapper .search-bar-wrapper {
+  position: relative;
+  bottom: auto;
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+/* El aviso "Te quedan N mensajes gratis" va en su propia línea encima de la caja, no flotando sobre el texto */
+.jarvis-sdk-chat-wrapper .search-bar-wrapper { flex-wrap: wrap; }
+.jarvis-sdk-chat-wrapper .search-notice {
+  position: static;
+  flex: 0 0 100%;
+  padding: 0 0 6px;
+}
