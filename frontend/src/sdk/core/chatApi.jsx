@@ -12,9 +12,9 @@ export const getAllChats = async (client) => {
 };
 
 // 2. Obtener mensajes de un chat específico
-export const getChatMessages = async (client, chatId) => {
+export const getChatMessages = async (client, chatId, params = {}) => {
   try {
-    const res = await client.get(`/api/v1/chat/${chatId}/messages`);
+    const res = await client.get(`/api/v1/chat/${chatId}/messages`, { params });
     return res.data;
   } catch (error) {
     throw new Error(error.response?.data?.error || 'Error al obtener los mensajes');

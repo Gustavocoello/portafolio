@@ -1,9 +1,11 @@
 // src/sdk/hooks/useChatMessages.js
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchChatMessages } from '../core/chatApi'; // Cambiar esto el import
+import { fetchChatMessages, getChatMessages } from '../core/chatApi'; // Cambiar esto el import
 import { parseChatMessagesResponse } from '../utils/chatResponseParser';  // Cambiar esto el import
-import { appendMessageToCache, trimChatCache } from '../utils/chatCacheHelpers'; 
+import { appendMessageToCache } from '../utils/chatCacheHelpers';
+
+const OLDER_PAGE = 20; // mensajes viejos que se piden cada vez que se llega arriba
 import chatMemoryCache from '../utils/chatMemoryCache'; // Cambiar esto el import 
 import Logger from '../utils/logger';
 
@@ -134,9 +136,36 @@ export function useChatMessages(chatId, options = {}) {
         return;
     }
     log.info(`[APPEND] Añadiendo mensajes al chat: ${targetId}`);
+    // Antes se recortaba a los últimos `keep`: los mensajes de arriba desaparecían y no se podía subir
     appendMessageToCache(queryClient, targetId, msgs);
-    trimChatCache(queryClient, targetId, keep);
-  }, [queryClient, chatId, keep]);
+  }, [queryClient, chatId]);
+
+  // Mensajes más viejos que el primero en pantalla (al subir). Los ids temporales (texto) no están en la base.
+  const [hasOlder, setHasOlder] = useState(true);
+  const loadingOlderRef = useRef(false);
+  useEffect(() => { setHasOlder(true); }, [chatId]);
+
+  const loadOlder = useCallback(async () => {
+    const firstId = flatMessages.find(m => Number.isInteger(m.id))?.id;
+    if (!chatId || !client || !hasOlder || loadingOlderRef.current || firstId == null) return false;
+    loadingOlderRef.current = true;
+    try {
+      const raw = await getChatMessages(client, chatId, { before: firstId, limit: OLDER_PAGE });
+      const older = parseChatMessagesResponse(raw, OLDER_PAGE).messages;
+      if (older.length < OLDER_PAGE) setHasOlder(false);
+      if (!older.length) return false;
+      queryClient.setQueryData(['chatMessages', chatId], old => old?.pages ? {
+        ...old,
+        pages: [{ ...old.pages[0], messages: [...older, ...old.pages[0].messages] }, ...old.pages.slice(1)],
+      } : old);
+      return true;
+    } catch (e) {
+      log.error(`[OLDER] No se pudieron cargar mensajes anteriores: ${e.message}`);
+      return false;
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  }, [chatId, client, hasOlder, flatMessages, queryClient]);
 
   return {
     ...query,
@@ -145,5 +174,7 @@ export function useChatMessages(chatId, options = {}) {
     isSuccess: query.isSuccess, 
     appendMessageToCache: appendMessages,
     updateMessageInCache: patchMessageInCache,
+    loadOlder,
+    hasOlder,
   };
 }

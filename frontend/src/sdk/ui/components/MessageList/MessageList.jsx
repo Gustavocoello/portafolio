@@ -1,5 +1,5 @@
 ///features/chat/components/Messagelist.jsx
-import React, { useEffect, useCallback, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import hljs from 'highlight.js';
 import DOMPurify from 'dompurify';
 import CodeBlock from '../CodeBlock/CodeBlock';
@@ -84,38 +84,15 @@ const UserMessageWrapper = ({ content, children, isHighlighted }) => {
   );
 };
 
-const MessageList = ({ messages = [], onLoadMore, hasMore, searchTerm = '' }) => {
+// La carga de mensajes viejos al subir vive en ChatContainer: el que scrollea es .content-area, no esta lista
+const MessageList = ({ messages = [], searchTerm = '' }) => {
   const messagesEndRef = useRef(null);
-  const containerRef = useRef(null);
-  const loadingRef = useRef(false);
 
-  // Auto-scroll al final
+  // Baja al final solo cuando llega un mensaje nuevo abajo; al cargar mensajes viejos arriba no salta
+  const lastId = messages[messages.length - 1]?.id;
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
-
-  // Detectar scroll arriba
-  const handleScroll = useCallback(() => {
-    if (!containerRef.current || loadingRef.current || !hasMore) return;
-
-    const { scrollTop } = containerRef.current;
-    
-    if (scrollTop < 100) {
-      loadingRef.current = true;
-      onLoadMore?.();
-      setTimeout(() => {
-        loadingRef.current = false;
-      }, 1000);
-    }
-  }, [hasMore, onLoadMore]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
+  }, [lastId]);
 
   const filteredMessages = messages
     .filter(msg => !msg.html?.includes('[NOTIFICATION]'))
@@ -173,9 +150,7 @@ const MessageList = ({ messages = [], onLoadMore, hasMore, searchTerm = '' }) =>
   };
 
   return (
-    <div className="message-list-wrapper" ref={containerRef}>
-      {hasMore && <div className="load-more-indicator">Scroll arriba para cargar...</div>}
-      
+    <div className="message-list-wrapper">
       <div className="message-list">
         {filteredMessages.map((msg, index) => {
           const isHighlighted = searchTerm && msg.content?.toLowerCase().includes(searchTerm.toLowerCase());

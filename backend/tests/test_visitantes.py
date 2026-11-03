@@ -16,6 +16,9 @@ class FakeRedis:
     def expire(self, key, segundos):
         self.ttl[key] = segundos
 
+    def get(self, key):
+        return str(self.datos[key]).encode() if key in self.datos else None  # redis-py devuelve bytes
+
 
 def test_tope_de_visitante(monkeypatch):
     fake = FakeRedis()
@@ -25,6 +28,20 @@ def test_tope_de_visitante(monkeypatch):
     assert cuentas[-1] > free_tier.VISITOR_LIMIT  # el mensaje 11 ya pasa el tope
     assert fake.ttl == {"visitor:messages:ip:1.2.3.4": free_tier.VISITOR_TTL}  # el TTL se pone una sola vez
     assert free_tier.visitor_message_count("ip:5.6.7.8") == 1  # cada IP lleva su cuenta
+
+
+def test_mensajes_gratis_restantes(monkeypatch):
+    fake = FakeRedis()
+    monkeypatch.setattr(free_tier, "redis_client", SimpleNamespace(is_available=lambda: True, client=fake))
+
+    assert free_tier.visitor_remaining("ip:1.2.3.4") == free_tier.VISITOR_LIMIT  # visitante nuevo
+    for _ in range(3):
+        free_tier.visitor_message_count("ip:1.2.3.4")
+    assert free_tier.visitor_remaining("ip:1.2.3.4") == free_tier.VISITOR_LIMIT - 3
+    assert free_tier.visitor_remaining("ip:1.2.3.4") == free_tier.VISITOR_LIMIT - 3  # consultar no gasta
+    for _ in range(20):
+        free_tier.visitor_message_count("ip:1.2.3.4")
+    assert free_tier.visitor_remaining("ip:1.2.3.4") == 0  # nunca negativo
 
 
 def test_ip_del_visitante_detras_del_tunel():

@@ -20,7 +20,7 @@ from src.services.cache.redis_cache import ChatCache
 from src.services.cache.redis_client import redis_client
 from src.database.settings.connection import SessionLocal, get_db
 from src.services.cache.redis_sidebar import SidebarCache
-from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, visitor_ip, VISITOR_LIMIT
+from src.services.llm.chat.free_tier import generate_prompt, visitor_message_count, visitor_remaining, visitor_ip, VISITOR_LIMIT
 from src.database.models.models import Chat, Message, Document
 from src.services.auth.auth.auth_middleware import get_current_user, authenticate
 from src.services.integrations.onedrive.onedrive_service import upload_to_onedrive, get_user_onedrive_token
@@ -55,6 +55,12 @@ def secure_filename(filename: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_\.-]', '_', os.path.basename(filename))
 
 ## ----------- Mensajes de la IA sin memoria --------------
+@search_router.get("/remaining")
+def visitor_remaining_messages(request: Request):
+    # El chat lo pide al abrir para mostrar "te quedan N mensajes gratis" antes del primer mensaje
+    return {"remaining": visitor_remaining(f"ip:{visitor_ip(request)}"), "limit": VISITOR_LIMIT}
+
+
 @search_router.post("/prompt")
 def handle_search_prompt(request: Request, payload: SearchPromptRequest):
     # El límite vive en el servidor (por IP): una cookie la borra cualquiera
@@ -141,7 +147,13 @@ def get_recent_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict
 
 # ---- Obtiene todos los mensajes de un chat específico ----
 @chat_router.get("/{chat_id}/messages")
-def get_chat_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+def get_chat_messages(
+    chat_id: UUID,
+    before: Optional[int] = Query(None, description="Solo mensajes con id menor: el chat los pide al subir"),
+    limit: int = Query(0, ge=0, le=200, description="0 = todos"),
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
     try:
         chat = db.query(Chat).filter(
             Chat.id == chat_id, 
@@ -152,11 +164,15 @@ def get_chat_messages(chat_id: UUID, db: Session = Depends(get_db), user: dict =
         if not chat:
             raise HTTPException(status_code=404, detail='Chat no encontrado o acceso denegado')
         
-        stmt = (select(Message)
-                .where(Message.chat_id == chat_id, Message.role.in_(LLM_ROLES))
-                .order_by(Message.created_at.asc()))
-        messages = db.execute(stmt).scalars().all()
-        
+        stmt = select(Message).where(Message.chat_id == chat_id, Message.role.in_(LLM_ROLES))
+        if before is not None:
+            stmt = stmt.where(Message.id < before)
+        if limit:
+            # Los `limit` más nuevos de ese tramo, devueltos en orden cronológico
+            messages = db.execute(stmt.order_by(Message.id.desc()).limit(limit)).scalars().all()[::-1]
+        else:
+            messages = db.execute(stmt.order_by(Message.created_at.asc())).scalars().all()
+
         return [{
             "id": msg.id,
             "role": msg.role,
