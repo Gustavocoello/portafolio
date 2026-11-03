@@ -162,7 +162,3 @@
   display: inline-flex;
   padding: 4px;
 }
-/* Dibujos de anatomy-asset: una versión por tema (arte/*.mjs y --light) */
-.art-light { display: none; }
-[data-theme='light'] .art-light { display: block; }
-[data-theme='light'] .art-dark { display: none; }

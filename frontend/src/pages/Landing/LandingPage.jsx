@@ -1922,11 +1922,9 @@ const LandingPage = () => {
         {/* Cards de selección */}
         <div className="services-grid">
           <div className="service-card" onClick={goToChat}>
-            <img
-              src="/icons/jarvis00.png"
-              alt="Jarvis Icon"
-              className="service-icon-img"
-            />
+            {/* El planeta del logo, dibujado con anatomy-asset (frontend/arte/planeta.mjs) */}
+            <img src="/arte/planeta.svg" alt="Jarvis" className="service-icon-img art-dark" />
+            <img src="/arte/planeta-light.svg" alt="Jarvis" className="service-icon-img art-light" />
             <hr className="service-divider" />
             <h3 className="service-name">Jarvis</h3>
           </div>
@@ -2093,8 +2091,8 @@ const LandingPage = () => {
           {/* Columna derecha: Imagen (más pequeña) */}
           <div className="terminal-image">
             {/* Dibujo hecho con anatomy-asset: frontend/arte/developer.mjs (oscuro y --light) */}
-            <img src="/arte/developer.svg" alt="Casco de astronauta junto a una laptop con código" className="perfil-img perfil-dark" />
-            <img src="/arte/developer-light.svg" alt="Casco de astronauta junto a una laptop con código" className="perfil-img perfil-light" />
+            <img src="/arte/developer.svg" alt="Casco de astronauta junto a una laptop con código" className="perfil-img art-dark" />
+            <img src="/arte/developer-light.svg" alt="Casco de astronauta junto a una laptop con código" className="perfil-img art-light" />
           </div>
         </div>
       </section>

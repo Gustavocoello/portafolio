@@ -178,3 +178,8 @@ code {
 [data-theme='dark'] .auth-form .auth-alt {
   color: white; /* Blanco */
 }
+
+/* Dibujos de anatomy-asset (frontend/arte/*.mjs): una versión por tema, se muestra la que corresponde */
+.art-light { display: none !important; }
+[data-theme='light'] .art-light { display: block !important; }
+[data-theme='light'] .art-dark { display: none !important; }
