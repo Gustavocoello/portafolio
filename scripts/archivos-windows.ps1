@@ -5,6 +5,8 @@
 # - Arranca solo al iniciar sesión (acceso directo en Inicio) y pide admin una vez para abrir el puerto 8005,
 #   solo para Tailscale (100.64.0.0/10). Todo pedido sin el JWT del backend recibe 401.
 # Carpetas que ve TARS: documentos, descargas, escritorio, datos (C:\work\Data) y work (C:\work, solo lectura).
+# -SinFirewall: sin pedir admin (p. ej. por ssh o sin nadie frente a la laptop); la regla se agrega después.
+param([switch]$SinFirewall)
 $ErrorActionPreference = "Stop"
 
 $raiz = (git rev-parse --show-toplevel).Trim()
@@ -63,7 +65,9 @@ $lnk.Save()
 Start-Process -FilePath $pythonw -ArgumentList "`"$servidor`"" -WorkingDirectory $destino -WindowStyle Hidden
 
 # 5. Firewall: el puerto solo para Tailscale (pide admin una vez)
-if (-not (Get-NetFirewallRule -DisplayName "TARS archivos (Tailscale)" -ErrorAction SilentlyContinue)) {
+if ($SinFirewall) {
+  Write-Host "Sin regla de firewall: vuelve a correr el script sin -SinFirewall frente a la laptop."
+} elseif (-not (Get-NetFirewallRule -DisplayName "TARS archivos (Tailscale)" -ErrorAction SilentlyContinue)) {
   $regla = "New-NetFirewallRule -DisplayName 'TARS archivos (Tailscale)' -Direction Inbound -Protocol TCP " +
            "-LocalPort $puerto -RemoteAddress 100.64.0.0/10 -Action Allow -Profile Any | Out-Null"
   Start-Process powershell -Verb RunAs -Wait -ArgumentList "-NoProfile", "-Command", $regla
