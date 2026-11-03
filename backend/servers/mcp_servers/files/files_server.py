@@ -1,6 +1,25 @@
-"""MCP de archivos: corre en home-lab-laptop (no en el compose de previseguros-server) y el backend lo llama por
-Tailscale. Toda la lógica y sus límites están en archivos.py; aquí solo el JWT y las herramientas."""
+"""MCP de archivos: corre en home-lab-laptop (Docker) y en la laptop Windows (scripts/archivos-windows.ps1), no en
+el compose de previseguros-server; el backend lo llama por Tailscale. Toda la lógica y sus límites están en
+archivos.py; aquí solo el JWT y las herramientas."""
 import os
+import sys
+from pathlib import Path
+
+if sys.stdout is None:  # con pythonw (Windows, sin consola) el log va a un archivo junto al servidor
+    sys.stdout = sys.stderr = open(Path(__file__).with_name("servidor.log"), "a", encoding="utf-8", buffering=1)
+
+
+def _cargar_env() -> None:
+    """En Windows no hay Docker que lea el .env: se carga aquí (lo ya definido en el entorno manda)."""
+    archivo = Path(__file__).with_name(".env")
+    if archivo.is_file():
+        for linea in archivo.read_text(encoding="utf-8-sig").splitlines():
+            clave, igual, valor = linea.strip().partition("=")
+            if igual and clave and not clave.startswith("#"):
+                os.environ.setdefault(clave.strip(), valor.strip())
+
+
+_cargar_env()
 
 import jwt
 import uvicorn
@@ -33,7 +52,7 @@ class SoloBackend(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-mcp = FastMCP(name="Archivos de home-lab-laptop")
+mcp = FastMCP(name=os.getenv("ARCHIVOS_EQUIPO", "Archivos de home-lab-laptop"))
 
 
 def _seguro(funcion, *args) -> str:
@@ -93,4 +112,4 @@ app = Starlette(
 )
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8005")))
+    uvicorn.run(app, host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", "8005")))

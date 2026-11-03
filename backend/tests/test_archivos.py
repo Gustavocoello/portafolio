@@ -100,6 +100,51 @@ def test_mover_y_papelera_nunca_borran(raices):
     assert "Nada" in srv.buscar("otra")  # la Papelera no aparece en las búsquedas
 
 
+# ─── Laptop Windows: código solo de lectura, secretos y carpetas generadas ──────
+
+@pytest.fixture
+def laptop(tmp_path, monkeypatch):
+    work, descargas = tmp_path / "work", tmp_path / "descargas"
+    (work / "repo" / "node_modules" / "lib").mkdir(parents=True)
+    (work / "repo" / "node_modules" / "lib" / "poliza.js").write_text("x", encoding="utf-8")
+    (work / "repo" / "poliza.py").write_text("print('poliza')", encoding="utf-8")
+    (work / "repo" / "credentials.json").write_text('{"poliza": "clave"}', encoding="utf-8")
+    (work / "repo" / ".env").write_text("KEY=poliza", encoding="utf-8")
+    (work / "Data").mkdir()
+    (work / "Data" / "poliza.csv").write_text("a,b", encoding="utf-8")
+    descargas.mkdir()
+    monkeypatch.setenv("ARCHIVOS_RAICES", f"work={work},datos={work / 'Data'},descargas={descargas}")
+    monkeypatch.setenv("ARCHIVOS_SOLO_LECTURA", "work")
+    monkeypatch.setenv("ARCHIVOS_REGISTRO", str(tmp_path / "registro" / "cambios.jsonl"))
+    return SimpleNamespace(work=work, descargas=descargas)
+
+
+def test_work_solo_se_lee(laptop):
+    assert "print" in srv.leer("work/repo/poliza.py")
+    for cambio in [lambda: srv.crear("work/repo/nota.md", "x"), lambda: srv.papelera("work/repo/poliza.py"),
+                   lambda: srv.mover("work/repo/poliza.py", "descargas/poliza.py"),
+                   lambda: srv.mover("datos/poliza.csv", "work/repo/poliza.csv")]:
+        with pytest.raises(srv.ErrorArchivos, match="solo de lectura"):
+            cambio()
+    assert srv.crear("descargas/nota.md", "hola").startswith("Creado")  # las demás carpetas sí se escriben
+
+
+def test_secretos_y_ruido_fuera(laptop):
+    with pytest.raises(srv.ErrorArchivos, match="secretos"):
+        srv.leer("work/repo/credentials.json")
+    with pytest.raises(srv.ErrorArchivos):
+        srv.leer("work/repo/.env")
+    (laptop.work / "Data" / "pass.md").write_text("x", encoding="utf-8")
+    with pytest.raises(srv.ErrorArchivos, match="secretos"):
+        srv.leer("datos/pass.md")
+    # nombres normales que se parecen sí se leen
+    for nombre in ["passport.pdf", "compass.md", "Póliza Ana.txt"]:
+        assert not srv._es_secreto(Path(nombre)), nombre
+    hallados = srv.buscar("poliza", en_contenido=True).splitlines()[1:]
+    # sin node_modules, sin mirar dentro de credentials.json ni .env, y Data una sola vez (como datos/)
+    assert sorted(h.split(" — ")[0] for h in hallados) == ["datos/poliza.csv", "work/repo/poliza.py"]
+
+
 # ─── Backend: confirmación en dos turnos ──────────────────────────────────────
 
 @pytest.fixture
@@ -108,7 +153,7 @@ def tools(raices, monkeypatch):
     herramientas._pendientes.clear()
     herramientas._ultimo_uso.clear()
 
-    def llamar(user_id, nombre, args):
+    def llamar(user_id, nombre, args, equipo="homelab"):
         herramientas._ultimo_uso[user_id] = 0  # que la prueba de "uso reciente" no dependa de esto
         try:
             return getattr(srv, nombre.removeprefix("archivos_"))(**args)
@@ -162,3 +207,32 @@ def test_carga_las_herramientas_solo_cuando_hacen_falta():
         assert herramientas.necesita_archivos(pedido, "u2"), pedido
     herramientas._pendientes["u2"] = {}
     assert herramientas.necesita_archivos("sí", "u2")  # la respuesta a una propuesta no lleva palabras clave
+
+
+def test_cada_ruta_va_a_su_equipo(monkeypatch):
+    herramientas._pendientes.clear()
+    monkeypatch.setenv("MCP_ARCHIVOS", "http://homelab")
+    monkeypatch.setenv("MCP_ARCHIVOS_LAPTOP", "http://laptop")
+    llamadas = []
+
+    def llamar(user_id, nombre, args, equipo="homelab"):
+        llamadas.append((nombre, equipo))
+        return "Error: apagada" if equipo == "laptop" else "ok"
+
+    monkeypatch.setattr(herramientas, "_llamar", llamar)
+    t = {x.name: x for x in herramientas.build_archivos_tools("u3")}
+    t["archivos_leer"].invoke({"ruta": "descargas/factura.pdf"})
+    t["archivos_leer"].invoke({"ruta": "vault/00-Inbox/x.md"})
+    t["archivos_leer"].invoke({"ruta": r"work\repo\a.py"})
+    assert [e for _, e in llamadas] == ["laptop", "homelab", "laptop"]
+    llamadas.clear()
+    r = t["archivos_listar"].invoke({"ruta": ""})  # la raíz pregunta a los dos; la laptop apagada no tapa al otro
+    assert sorted(e for _, e in llamadas) == ["homelab", "laptop"]
+    assert "En home-lab-laptop: ok" in r and "En la laptop Windows: Error" in r
+    r = t["archivos_proponer_cambio"].invoke({"accion": "mover", "ruta": "vault/a.md", "destino": "descargas/a.md"},
+                                             config=_turno(1))
+    assert r.startswith("Error") and "u3" not in herramientas._pendientes
+    monkeypatch.delenv("MCP_ARCHIVOS_LAPTOP")
+    llamadas.clear()
+    t["archivos_leer"].invoke({"ruta": "descargas/factura.pdf"})  # sin laptop configurada, todo va a home-lab
+    assert llamadas == [("archivos_leer", "homelab")]

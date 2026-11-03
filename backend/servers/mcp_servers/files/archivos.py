@@ -2,6 +2,8 @@
 
 Reglas que no dependen del modelo:
 - Solo se tocan las carpetas de ARCHIVOS_RAICES; las rutas son "raíz/sub/carpeta/archivo" ("vault/00-Inbox/x.md").
+  Las de ARCHIVOS_SOLO_LECTURA (p. ej. el código de la laptop Windows) solo se leen.
+- Nunca se leen archivos con secretos (.env, llaves, credenciales); las carpetas ocultas tampoco se ven.
 - Nunca se borra: "papelera" mueve a <raíz>/Papelera. Ningún cambio sobrescribe un archivo.
 - Cada cambio queda en el registro (una línea JSON por cambio).
 - En el vault: frontmatter obligatorio, nada de contraseñas, keys ni datos de contacto, y no se escribe en graphify/,
@@ -24,6 +26,12 @@ EDITABLES = {".md", ".txt", ".csv"}
 VAULT_PROTEGIDO = ("graphify", "_meta", "40-Archivo")
 MAX_LEER = 6000
 MAX_ESCANEO = 20000  # archivos revisados por búsqueda, para que una búsqueda nunca tarde minutos
+# Carpetas generadas (dependencias, compilados): miles de archivos que solo son ruido en una búsqueda
+RUIDO = {"node_modules", "__pycache__", "venv", "env", "site-packages", "dist", "build", "graphify-out"}
+# Nombres de archivos con secretos: no se leen ni se buscan por dentro (sus nombres sí se pueden listar)
+SECRETO = re.compile(r"(^\.env|\.(pem|key|pfx|p12|kdbx|jks)$|^id_(rsa|ed25519|ecdsa)|credential|secret|"
+                     r"^token.*\.json$|service[-_]?account.*\.json$|"
+                     r"^pass(word|wd)?s?[._ -]|password|contrase|^claves?[._ -])", re.I)
 
 # Lo que no puede quedar en el vault (regla 8): keys, contraseñas y datos de contacto
 SENSIBLE = [
@@ -52,6 +60,14 @@ def raices() -> dict[str, Path]:
         if nombre and ruta:
             salida[nombre.strip()] = Path(ruta.strip())
     return salida
+
+
+def solo_lectura() -> set[str]:
+    return {n.strip() for n in os.getenv("ARCHIVOS_SOLO_LECTURA", "").split(",") if n.strip()}
+
+
+def _es_secreto(p: Path) -> bool:
+    return bool(SECRETO.search(p.name))
 
 
 def _registro() -> Path:
@@ -106,6 +122,8 @@ def _registrar(accion: str, **datos) -> None:
 
 def _puede_escribir(nombre: str, raiz: Path, real: Path) -> None:
     rel = real.relative_to(raiz).parts
+    if nombre in solo_lectura():
+        raise ErrorArchivos(f"{nombre}/ es solo de lectura: ahí no se crea, mueve ni manda nada a la Papelera.")
     if nombre == "vault" and rel and rel[0] in VAULT_PROTEGIDO:
         raise ErrorArchivos(f"En el vault no se escribe en {rel[0]}/ (regla del vault). Elige otra carpeta.")
     if real == raiz:
@@ -160,13 +178,15 @@ def buscar(texto: str, ruta: str = "", en_contenido: bool = False, limite: int =
         raise ErrorArchivos("Falta qué buscar.")
     lugares = [resolver(ruta)] if ruta.strip().strip("/") else [(n, p.resolve(), p.resolve()) for n, p in raices().items()]
     hallados, revisados = [], 0
+    otras = {p.resolve() for p in raices().values()}  # C:\work\Data es raíz propia: no se repite dentro de work/
     for nombre, raiz, inicio in lugares:
         if not inicio.is_dir():
             continue
         for carpeta, subcarpetas, archivos in os.walk(inicio):
             # graphify/ son mapas de código generados (miles de notas): solo ruido para una búsqueda
             omitir = {PAPELERA, "graphify"} if nombre == "vault" and Path(carpeta) == raiz else {PAPELERA}
-            subcarpetas[:] = [s for s in subcarpetas if not s.startswith(".") and s not in omitir]
+            subcarpetas[:] = [s for s in subcarpetas if not s.startswith(".") and s not in omitir | RUIDO
+                              and (Path(carpeta) / s).resolve() not in otras - {raiz}]
             for a in archivos:
                 if a.startswith(".") or ".sync-conflict-" in a:
                     continue
@@ -175,7 +195,8 @@ def buscar(texto: str, ruta: str = "", en_contenido: bool = False, limite: int =
                 motivo = None
                 if buscado in _sin_tildes(a):
                     motivo = "nombre"
-                elif en_contenido and p.suffix.lower() in TEXTO and p.stat().st_size < 1_000_000:
+                elif (en_contenido and p.suffix.lower() in TEXTO and not _es_secreto(p)
+                      and p.stat().st_size < 1_000_000):
                     contenido = p.read_text(encoding="utf-8", errors="ignore")
                     i = _sin_tildes(contenido).find(buscado)
                     if i >= 0:
@@ -216,6 +237,8 @@ def leer(ruta: str, desde: int = 0) -> str:
     nombre, raiz, real = resolver(ruta)
     if not real.is_file():
         raise ErrorArchivos(f"No existe el archivo {ruta}.")
+    if _es_secreto(real):
+        raise ErrorArchivos("Ese archivo guarda secretos (keys, contraseñas o llaves); no se lee.")
     texto = _texto_de(real)
     trozo = texto[max(0, desde): max(0, desde) + MAX_LEER]
     sigue = desde + MAX_LEER < len(texto)

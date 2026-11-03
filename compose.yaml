@@ -11,6 +11,8 @@ services:
       MCP_GITHUB: http://mcp-github:8004/mcp-server/mcp
       # Archivos y vault: el MCP corre en home-lab-laptop y se llega por Tailscale (backend/servers/mcp_servers/files)
       MCP_ARCHIVOS: http://100.68.212.44:8005/mcp-server/mcp
+      # Archivos de la laptop Windows (previseguros-laptop): solo responde con la laptop encendida (scripts/archivos-windows.ps1)
+      MCP_ARCHIVOS_LAPTOP: http://100.118.245.101:8005/mcp-server/mcp
     # Solo escucha en la máquina: la entrada desde internet es el túnel de Cloudflare.
     ports:
       - "127.0.0.1:8096:8000"

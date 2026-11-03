@@ -1,4 +1,5 @@
-# MCP de archivos en home-lab-laptop (lo despliega scripts/archivos-homelab.sh, no el runner).
+# MCP de archivos en home-lab-laptop (lo despliega scripts/archivos-homelab.sh, no el runner). En la laptop Windows corre
+# sin Docker: scripts/archivos-windows.ps1.
 # El backend de previseguros-server lo llama por Tailscale: MCP_ARCHIVOS=http://100.68.212.44:8005/mcp-server/mcp
 services:
   archivos:
