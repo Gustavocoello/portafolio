@@ -30,6 +30,8 @@ const MIN_PHRASE_MS = 400;   // más corto que esto es un ruido, no una frase
 const FOLLOW_UP_MS = 8000;   // tras hablar con TARS, la siguiente frase no necesita su nombre (como Alexa)
 const NAME_GRACE_MS = 1000;  // el reconocimiento del navegador llega un poco después de que termina la frase
 const NOTICES_EVERY_MS = 60000;
+// /project-tars?debug muestra en pantalla el volumen y lo que oyó (sirve en el celular, sin consola)
+const DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
 const WAKE_WORD = /\b(tars|tarz|thars|tares|tarts)\b/i;
 const STOP_WORD = /\b(tars|tarz|basta|silencio|detente|c[aá]llate|stop)\b/i;
 
@@ -81,7 +83,7 @@ function base64ToBuffer(b64) {
  * Reconocimiento de voz del navegador, solo para oír "TARS" sin mandar cada frase a Groq.
  * En el propio equipo si Chrome lo permite (processLocally); si no, el de Google. null si el navegador no tiene.
  */
-async function startNameListener(onText, isStopped) {
+async function startNameListener(onText, isStopped, onError) {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) return null;
   const rec = new Recognition();
@@ -98,16 +100,26 @@ async function startNameListener(onText, isStopped) {
     console.info("TARS: reconocimiento local no disponible, uso el del navegador", err);
   }
   let dead = false;
+  let lastResultAt = -Infinity;
   rec.onresult = (e) => {
+    lastResultAt = performance.now();
     for (let i = e.resultIndex; i < e.results.length; i++) onText(e.results[i][0].transcript);
   };
   rec.onerror = (e) => {
+    if (e.error !== "no-speech" && e.error !== "aborted") console.warn("TARS: el reconocimiento de voz falló:", e.error);
+    onError?.(e.error);
     if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "language-not-supported") dead = true;
   };
   rec.onend = () => { if (!dead && !isStopped()) setTimeout(() => { try { rec.start(); } catch { /* ya iniciado */ } }, 250); };
   rec.start();
   console.info(`TARS: escucho su nombre ${local ? "en este equipo" : "con el reconocimiento del navegador"}`);
-  return { stop: () => { dead = true; rec.abort(); }, isAlive: () => !dead };
+  return {
+    stop: () => { dead = true; rec.abort(); },
+    isAlive: () => !dead,
+    // ¿El navegador entregó algún texto desde t? Si no, no sabe si dijeron "TARS" y decide Whisper
+    heardSince: (t) => lastResultAt >= t,
+    local,
+  };
 }
 
 /**
@@ -123,9 +135,12 @@ function useVoice(active, tars) {
   const [phase, setPhase] = useState("idle");
   const tarsRef = useRef(tars);
   tarsRef.current = tars;
+  // Diagnóstico para ?debug: volumen, qué entendió Chrome y qué decidió TARS (se muestra en pantalla)
+  const diagRef = useRef({});
 
   useEffect(() => {
     if (!active) return;
+    const diag = diagRef.current;
     let stopped = false;
     let raf, stream, ctx, followTimer, noticesTimer, nameListener, wakeLock;
     let recorder = null;
@@ -193,10 +208,12 @@ function useVoice(active, tars) {
       if (tarsRef.current) {
         nameListener = await startNameListener((text) => {
           lastHeard = text;
+          diag.oido = text;
           if (WAKE_WORD.test(text)) heardNameAt = performance.now();
           else if (pareceTars(text)) soundsLikeNameAt = performance.now();
           if (current && STOP_WORD.test(text)) interrupt(); // también mientras piensa
-        }, () => stopped);
+        }, () => stopped, (error) => { diag.error = error; });
+        diag.reconocedor = nameListener ? (nameListener.local ? "local" : "del navegador") : "no hay";
       }
       const listensLocally = () => nameListener?.isAlive();
 
@@ -251,6 +268,7 @@ function useVoice(active, tars) {
         busy = true;
         try {
           const heard = await tarsRef.current.hear(blob, wake);
+          diag.whisper = heard.awake ? `con el nombre: «${heard.text}»` : "no empezaba con «TARS»";
           if (stopped || !heard.awake) return;
           chime(ctx);
           if (heard.text) return await reply(heard.text);
@@ -279,10 +297,13 @@ function useVoice(active, tars) {
           // Solo se manda a Groq si el navegador oyó "TARS" en esta frase
           const phraseStart = startedAt;
           setTimeout(() => {
-            if (heardNameAt >= phraseStart - 1500) return handle(blob, false);
-            if (soundsLikeNameAt >= phraseStart - 1500) return handle(blob, true); // Whisper confirma el nombre
-            // Para ajustar la detección: en la consola (F12) se ve qué entendió el navegador
-            console.info(`TARS: sin su nombre, ignoro «${lastHeard}»`);
+            const desde = phraseStart - 1500;
+            if (heardNameAt >= desde) return handle(blob, false);
+            if (soundsLikeNameAt >= desde) return handle(blob, true); // Whisper confirma el nombre
+            // El navegador no entregó nada (pasa en el celular, que comparte el micrófono): decide Whisper
+            if (!nameListener.heardSince(desde)) { diag.decision = "Chrome no entendió nada: va a Whisper"; return handle(blob, true); }
+            diag.decision = `ignorado: «${lastHeard}»`;
+            console.info(`TARS: sin su nombre, ignoro «${lastHeard}»`); // en la consola (F12) se ve qué entendió
             done();
           }, NAME_GRACE_MS);
         };
@@ -343,6 +364,8 @@ function useVoice(active, tars) {
       const tick = () => {
         if (stopped) return;
         const level = audioLevel(mic, buffer);
+        diag.nivel = Math.max(level, (diag.nivel || 0) * 0.97); // pico que baja despacio, para leerlo en pantalla
+        diag.grabando = !!recorder;
         setUserLevel((prev) => prev * 0.82 + (busy && !speaking ? 0 : level) * 0.18);
         setTarsLevel((prev) => prev * 0.82 + audioLevel(voice, buffer) * 0.18);
 
@@ -387,7 +410,7 @@ function useVoice(active, tars) {
     };
   }, [active]);
 
-  return { userLevel, tarsLevel, phase };
+  return { userLevel, tarsLevel, phase, diag: diagRef.current };
 }
 
 /* ==================== NEURAL NODES GENERATOR ==================== */
@@ -721,7 +744,13 @@ const PHASE_TEXT = {
 
 const ReactiveSphere = forwardRef(function ReactiveSphere({ tars = null }, ref) {
   const [listening, setListening] = useState(false);
-  const { userLevel, tarsLevel, phase } = useVoice(listening, tars);
+  const { userLevel, tarsLevel, phase, diag } = useVoice(listening, tars);
+  const [debugInfo, setDebugInfo] = useState(null);
+  useEffect(() => {
+    if (!DEBUG) return;
+    const t = setInterval(() => setDebugInfo({ ...diag }), 250);
+    return () => clearInterval(t);
+  }, [diag]);
 
   // Como Alexa: si el micrófono ya está permitido, TARS queda escuchando al abrir la página
   useEffect(() => {
@@ -757,6 +786,19 @@ const ReactiveSphere = forwardRef(function ReactiveSphere({ tars = null }, ref) 
       </Canvas>
 
       <p className="rs3d-phase" aria-live="polite">{tars ? PHASE_TEXT[phase] : ""}</p>
+
+      {DEBUG && debugInfo && (
+        <pre style={{ position: "fixed", top: 8, left: 8, right: 8, margin: 0, padding: 8, fontSize: 12, lineHeight: 1.4,
+          whiteSpace: "pre-wrap", color: "#cfe8ff", background: "rgba(0,0,0,0.7)", borderRadius: 8, zIndex: 10 }}>
+          {[
+            `volumen: ${(debugInfo.nivel || 0).toFixed(3)}  (graba desde ${VOICE_THRESHOLD})${debugInfo.grabando ? "  ● grabando" : ""}`,
+            `fase: ${phase}  |  reconocedor: ${debugInfo.reconocedor || "-"}${debugInfo.error ? `  (último error: ${debugInfo.error})` : ""}`,
+            `Chrome oyó: ${debugInfo.oido || "-"}`,
+            `decisión: ${debugInfo.decision || "-"}`,
+            `Whisper: ${debugInfo.whisper || "-"}`,
+          ].join("\n")}
+        </pre>
+      )}
 
       {/* Botón micrófono */}
       <div className="rs3d-controls">
