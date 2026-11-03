@@ -1922,9 +1922,8 @@ const LandingPage = () => {
         {/* Cards de selección */}
         <div className="services-grid">
           <div className="service-card" onClick={goToChat}>
-            {/* El planeta del logo, dibujado con anatomy-asset (frontend/arte/planeta.mjs) */}
-            <img src="/arte/planeta.svg" alt="Jarvis" className="service-icon-img art-dark" />
-            <img src="/arte/planeta-light.svg" alt="Jarvis" className="service-icon-img art-light" />
+            {/* El planeta del logo (anatomy-asset, frontend/arte/planeta.mjs), siempre en blanco: esta sección es negra en los dos temas */}
+            <img src="/arte/planeta-light.svg" alt="Jarvis" className="service-icon-img" />
             <hr className="service-divider" />
             <h3 className="service-name">Jarvis</h3>
           </div>
