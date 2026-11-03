@@ -36,3 +36,15 @@ def test_hora_en_espanol_y_al_momento():
     from datetime import datetime
     from src.core.time_helper import fecha_hora_texto, TIMEZONE
     assert fecha_hora_texto(TIMEZONE.localize(datetime(2026, 11, 3, 9, 5))) == "martes 03 de noviembre de 2026, 09:05"
+
+
+def test_al_modelo_va_solo_el_final_del_hilo():
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from src.services.agent.common.historial import recortar_historial
+    hilo = []
+    for i in range(30):  # 30 turnos: pregunta, llamada a herramienta, resultado y respuesta
+        hilo += [HumanMessage(f"p{i}"), AIMessage("", tool_calls=[{"name": "t", "args": {}, "id": f"c{i}"}]),
+                 ToolMessage("r", tool_call_id=f"c{i}"), AIMessage(f"r{i}")]
+    corto = recortar_historial(hilo)
+    assert len(corto) <= 20 and isinstance(corto[0], HumanMessage) and corto[-1].content == "r29"
+    assert recortar_historial(hilo[:8]) == hilo[:8]

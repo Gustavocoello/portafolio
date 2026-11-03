@@ -31,7 +31,9 @@ from src.core.logging import get_logger
 from src.core.time_helper import fecha_hora_texto
 from src.database.models.models import TokenLog 
 from src.database.settings.connection import get_db
-from .utils.session_manager import create_agent_session, complete_session, fail_session 
+from .utils.session_manager import create_agent_session, complete_session, fail_session
+
+from .historial import recortar_historial
 
 
 logging.getLogger("openai").setLevel(logging.WARNING)
@@ -137,7 +139,7 @@ class BaseAgent:
         # msg_len = sum(len(str(m.content)) // 4 for m in state["messages"])
         # print(f"\n[DEBUG TOKENS] System: ~{sys_len} | Historial: ~{msg_len}")
         
-        return [SystemMessage(content=sys_content)] + state["messages"]
+        return [SystemMessage(content=sys_content)] + recortar_historial(state["messages"])
     
     def _extract_dynamic_rules(self, instruction: str) -> tuple[str, str, dict]:
         """
