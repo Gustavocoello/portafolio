@@ -1,5 +1,6 @@
 # src/services/agent/jarvis/tools/email.py
 import os
+import re
 import email
 import imaplib
 from email.header import decode_header, make_header
@@ -14,7 +15,8 @@ logger = get_logger("email_tools")
 
 MAX_CUERPO = 4000  # caracteres por correo: suficiente para resumir sin llenar el contexto
 INICIO_CORREO = 65536  # bytes que bajan los avisos por correo: alcanza para cabeceras y texto, sin los adjuntos
-IMAP_TIMEOUT = 20      # sin esto un servidor lento dejaba colgada la petición (y su hilo) sin límite
+LISTA_CARPETA = re.compile(r'\((?P<flags>[^)]*)\) (?:"[^"]*"|NIL) (?P<nombre>.+)$')  # una línea de IMAP LIST
+IMAP_TIMEOUT = 20     # sin esto un servidor lento dejaba colgada la petición (y su hilo) sin límite
 
 
 def _conectar() -> imaplib.IMAP4_SSL:
@@ -91,8 +93,14 @@ def _carpeta_enviados(imap) -> str | None:
     nombres = []
     for linea in carpetas or []:
         texto = linea.decode(errors="replace") if isinstance(linea, bytes) else str(linea)
-        nombre = texto.rsplit(' "', 1)[-1].strip('"') if ' "' in texto else texto.split()[-1]
-        if "\\Sent" in texto:
+        # (\HasNoChildren \Sent) "." INBOX.Sent  -> el nombre puede venir con o sin comillas
+        m = LISTA_CARPETA.match(texto)
+        if not m:
+            continue
+        nombre = m["nombre"].strip()
+        if nombre.startswith('"') and nombre.endswith('"'):
+            nombre = nombre[1:-1].replace('\\"', '"')
+        if "\\Sent" in m["flags"]:
             return nombre
         nombres.append(nombre)
     return next((n for n in nombres if n.lower().split(".")[-1].split("/")[-1] in ("sent", "sent items", "enviados", "sent messages")), None)

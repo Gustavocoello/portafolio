@@ -63,7 +63,7 @@ class FakeBuzon:
         self.actual, self.busquedas, self.literal = "INBOX", [], None
 
     def list(self):
-        return "OK", [rb'(\HasNoChildren) "." "INBOX"', rb'(\HasNoChildren \Sent) "." "INBOX.Sent"']
+        return "OK", [rb'(\HasNoChildren) "." "INBOX"', rb'(\HasNoChildren \Sent) "." INBOX.Sent']  # sin comillas, como lo da el servidor real
 
     def select(self, carpeta, readonly=False):
         self.actual = carpeta.strip('"')
