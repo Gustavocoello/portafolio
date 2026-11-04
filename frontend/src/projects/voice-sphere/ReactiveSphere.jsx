@@ -358,7 +358,21 @@ function useVoice(active, tars) {
         recorder = null;
       };
 
+      // Callarlo sin depender del micrófono: con los parlantes de la laptop, el reconocedor oye sobre todo a TARS y
+      // tu "basta" se pierde. Tocar la pantalla o Escape lo callan siempre (el botón del micrófono apaga todo).
+      const shush = (why) => {
+        if (!current) return;
+        diag.decision = `callado: ${why}`;
+        interrupt();
+        openFollowUp(); // lo siguiente que digas no necesita su nombre
+        setPhase("listening");
+      };
+      const onTap = (e) => { if (!e.target.closest?.("button")) shush("tocaste la pantalla"); };
+      window.addEventListener("pointerdown", onTap);
+      cleanups.push(() => window.removeEventListener("pointerdown", onTap));
+
       const onKeyDown = (e) => {
+        if (e.code === "Escape") return shush("Escape");
         if (e.code !== "Space" || e.repeat || !tarsRef.current || e.target.closest?.("input, textarea")) return;
         e.preventDefault();
         if (speaking || current) {
@@ -790,7 +804,7 @@ const PHASE_TEXT = {
   sleeping: "Say \u201cTARS\u201d or hold Space",
   listening: "Listening…",
   thinking: "Thinking…",
-  speaking: "Talk to interrupt",
+  speaking: "Tap the screen or press Esc to stop",
 };
 
 const ReactiveSphere = forwardRef(function ReactiveSphere({ tars = null }, ref) {
