@@ -46,6 +46,7 @@ def build_notion_tools(user_id: str, chat_id: Optional[str] = None, db_session=N
         """
         Busca páginas, bases de datos y bloques en Notion del usuario.
         Usa esto cuando el usuario pregunte por contenido general en su Notion.
+        Solo Notion: el vault, el inbox y las notas de Obsidian se buscan con archivos_*, no aquí.
         Input: query (str) — término de búsqueda.
         """
         try: 

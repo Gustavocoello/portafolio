@@ -14,7 +14,7 @@ from src.core.logging import get_logger
 from src.services.agent.jarvis.agent import get_jarvis
 from src.services.auth.auth.auth_middleware import get_current_user, get_owner, es_dueno
 from src.services.agent.jarvis.notices import avisos_pendientes
-from src.services.agent.jarvis.voz import frases, quitar_nombre
+from src.services.agent.jarvis.voz import frases, quitar_nombre, sin_nombre_al_inicio
 
 logger = get_logger("tars")
 
@@ -112,7 +112,7 @@ def tars_reply(payload: TarsReplyIn, user: dict = Depends(get_owner)):
                     yield _audio(random.choice(MIENTRAS_BUSCA))
                 elif isinstance(ultimo, AIMessage) and not ultimo.tool_calls:
                     final = ultimo.content
-            partes = frases(final)
+            partes = frases(sin_nombre_al_inicio(final))
             for i, frase in enumerate(partes):
                 yield _audio(frase, " ".join(partes[:i]), " ".join(partes[i + 1:]))
         except requests.RequestException:

@@ -54,6 +54,15 @@ _PALABRAS = re.compile(
 )
 
 
+# El vault de Obsidian, no Notion: con estas palabras (y sin "notion") el agente responde sin las herramientas de Notion
+_VAULT = re.compile(r"\b(vault|obsidian|inbox)\b")
+
+
+def es_del_vault(texto: str) -> bool:
+    plano = _normal(texto)
+    return bool(_VAULT.search(plano)) and "notion" not in plano
+
+
 def _normal(texto: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", texto.casefold()) if unicodedata.category(c) != "Mn")
 

@@ -21,6 +21,16 @@ def quitar_nombre(texto: str) -> str | None:
     return ""
 
 
+# "TARS:", "TARS aquí.", "Soy TARS," al inicio de una respuesta: el nombre ya lo dijo Gustavo para llamarlo
+NOMBRE_AL_RESPONDER = re.compile(r"^\s*(?:(?:soy|aqu[ií])\s+)?tars(?:\s+aqu[ií])?\s*[:,.!—-]+\s*", re.IGNORECASE)
+
+
+def sin_nombre_al_inicio(texto: str) -> str:
+    """La respuesta sin "TARS:" (u otra forma de presentarse) al principio."""
+    resto = NOMBRE_AL_RESPONDER.sub("", texto, count=1)
+    return (resto[:1].upper() + resto[1:]) if resto.strip() else texto
+
+
 def frases(texto: str) -> list[str]:
     """Parte la respuesta en frases para que la primera suene mientras se generan las demás."""
     return [p for p in re.split(r"(?<=[.!?…])\s+", texto.strip()) if p.strip()]

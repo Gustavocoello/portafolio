@@ -36,8 +36,19 @@ const WAKE_WORD = /\b(tars|tarz|thars|tares|tarts)\b/i;
 const STOP_WORD = /\b(tars|tarz|basta|silencio|detente|c[aá]llate|stop)\b/i;
 // Solo para callarlo ("TARS, basta"): se calla y escucha, sin responderle a eso
 const ONLY_STOP = /^\W*(oye\W+)?(tars\W*)?(basta|para|silencio|detente|c[aá]llate|stop|espera|ya)?\W*(tars)?\W*$/i;
+// "TARS, ya", "para", "espera": palabras comunes que TARS también dice ("para mañana"), así que solo cuentan si no
+// están en lo que él está diciendo (si no, se callaría con su propio eco)
+const SOFT_STOP = new Set(["para", "ya", "espera", "alto", "suficiente", "basta"]);
+const DUCK_GAIN = 0.25;      // mientras le hablas, TARS baja la voz para que el reconocedor te oiga a ti
+const DUCK_MS = 800;
 const BARGE_WORDS = 2;       // palabras tuyas (no de lo que TARS está diciendo) que lo interrumpen
 const BARGE_VOICE_MS = 700;  // y el micrófono (con cancelación de eco) tiene que haber oído voz hace menos de esto
+
+/** ¿Pidió que se calle? Las palabras fuertes siempre; las comunes solo si TARS no las está diciendo. */
+function pideCallar(texto, saying) {
+  if (STOP_WORD.test(texto)) return true;
+  return words(texto).some((w) => SOFT_STOP.has(w) && !saying.has(w));
+}
 
 /** Palabras de un texto sin tildes ni signos, para comparar lo que oyó Chrome con lo que dice TARS. */
 function words(texto) {
@@ -211,7 +222,14 @@ function useVoice(active, tars) {
       ctx.createMediaStreamSource(stream).connect(mic);
       const voice = ctx.createAnalyser();
       voice.fftSize = 512;
-      voice.connect(ctx.destination);
+      const volume = ctx.createGain(); // baja la voz de TARS mientras le hablas encima
+      voice.connect(volume).connect(ctx.destination);
+      let ducked = false;
+      const duck = (on) => {
+        if (on === ducked) return;
+        ducked = on;
+        volume.gain.setTargetAtTime(on ? DUCK_GAIN : 1, ctx.currentTime, on ? 0.05 : 0.2);
+      };
       const buffer = new Uint8Array(mic.frequencyBinCount);
 
       // El navegador no deja sonar audio hasta que el usuario toca la página (pasa al abrirla con el micrófono ya permitido)
@@ -240,7 +258,7 @@ function useVoice(active, tars) {
           if (WAKE_WORD.test(text)) heardNameAt = performance.now();
           else if (pareceTars(text)) soundsLikeNameAt = performance.now();
           if (!current) return;
-          if (STOP_WORD.test(text)) return speaking ? bargeIn(`«${text}»`) : interrupt(); // también mientras piensa
+          if (pideCallar(text, saying)) return speaking ? bargeIn(`«${text}»`) : interrupt(); // también mientras piensa
           // Mientras habla: palabras que no son las suyas y voz en el micrófono = le estás hablando
           const tuyas = words(text).filter((w) => w.length > 2 && !saying.has(w));
           if (speaking && tuyas.length >= BARGE_WORDS && performance.now() - lastVoice < BARGE_VOICE_MS) {
@@ -358,7 +376,21 @@ function useVoice(active, tars) {
         recorder = null;
       };
 
+      // Callarlo sin depender del micrófono: con los parlantes de la laptop, el reconocedor oye sobre todo a TARS y
+      // tu "basta" se pierde. Tocar la pantalla o Escape lo callan siempre (el botón del micrófono apaga todo).
+      const shush = (why) => {
+        if (!current) return;
+        diag.decision = `callado: ${why}`;
+        interrupt();
+        openFollowUp(); // lo siguiente que digas no necesita su nombre
+        setPhase("listening");
+      };
+      const onTap = (e) => { if (!e.target.closest?.("button")) shush("tocaste la pantalla"); };
+      window.addEventListener("pointerdown", onTap);
+      cleanups.push(() => window.removeEventListener("pointerdown", onTap));
+
       const onKeyDown = (e) => {
+        if (e.code === "Escape") return shush("Escape");
         if (e.code !== "Space" || e.repeat || !tarsRef.current || e.target.closest?.("input, textarea")) return;
         e.preventDefault();
         if (speaking || current) {
@@ -419,7 +451,9 @@ function useVoice(active, tars) {
           if (level > VOICE_THRESHOLD) {
             lastVoice = now;
             if (!recorder) startRecording(now, false);
+            duck(true);
           } else if (recorder && !bargedIn && now - lastVoice > SILENCE_MS) discardRecording();
+          if (now - lastVoice > DUCK_MS) duck(false);
           // Sin reconocimiento del navegador, interrumpir es hablarle fuerte un momento
           if (!listensLocally()) {
             if (level > BARGE_IN_THRESHOLD) {
@@ -428,6 +462,7 @@ function useVoice(active, tars) {
             } else loudSince = 0;
           }
         }
+        if (!speaking) duck(false); // la próxima respuesta empieza con su volumen normal
         if (tarsRef.current && !busy && !ptt) {
           if (level > VOICE_THRESHOLD) {
             lastVoice = now;
@@ -790,7 +825,7 @@ const PHASE_TEXT = {
   sleeping: "Say \u201cTARS\u201d or hold Space",
   listening: "Listening…",
   thinking: "Thinking…",
-  speaking: "Talk to interrupt",
+  speaking: "Tap the screen or press Esc to stop",
 };
 
 const ReactiveSphere = forwardRef(function ReactiveSphere({ tars = null }, ref) {
