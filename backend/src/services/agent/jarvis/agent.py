@@ -14,6 +14,7 @@ from src.services.llm.chat.llm_router import get_langchain_llm
 
 from src.services.agent.jarvis.tool import build_jarvis_tools
 from src.services.agent.jarvis.tools.archivos import archivos_disponibles, build_archivos_tools, es_del_vault, necesita_archivos
+from src.services.agent.jarvis.tools.panel import build_panel_tools, necesita_panel, panel_disponible
 
 def get_jarvis_template():
     """Genera el template maestro leyendo AGENT.md y agregando sufijos de LangChain."""
@@ -50,21 +51,25 @@ class JarvisAgent(BaseAgent):
         if client_type == "tars":  # mismas herramientas, voz y personalidad de TARS
             template += "\n" + (Path(__file__).resolve().parent / "TARS.md").read_text(encoding="utf-8")
         super().__init__(llm, tools, template)
-        # Archivos y vault de home-lab-laptop: un segundo grafo con esas herramientas, que solo responde cuando el
-        # mensaje las necesita (cada herramienta agranda todos los pedidos al modelo)
-        self.app_archivos = self.app_vault = None
-        if archivos_disponibles():
-            archivos = build_archivos_tools(user_id)
-            self.app_archivos = self._grafo(tools + archivos)
-            # "vault" o "inbox" sin decir Notion: sin las herramientas de Notion, que el modelo a veces elegía igual
-            self.app_vault = self._grafo([t for t in tools if not t.name.startswith("notion_")] + archivos)
+        # Archivos y vault (home-lab-laptop y laptop Windows) y panel BrokerIA: herramientas extra que solo se cargan
+        # cuando el mensaje las necesita (cada herramienta agranda todos los pedidos al modelo). Un grafo por
+        # combinación, creado la primera vez que hace falta; todos comparten la memoria del hilo.
+        self.archivos = build_archivos_tools(user_id) if archivos_disponibles() else []
+        self.panel = build_panel_tools(user_id) if panel_disponible() else []
+        self._grafos: dict[tuple[bool, bool, bool], object] = {}
 
     def _app_para(self, instruction: str, user_id: str):
-        if self.app_vault and es_del_vault(instruction):
-            return self.app_vault
-        if self.app_archivos and necesita_archivos(instruction, user_id):
-            return self.app_archivos
-        return self.app
+        # "vault" o "inbox" sin decir Notion: sin las herramientas de Notion, que el modelo a veces elegía igual
+        vault = bool(self.archivos) and es_del_vault(instruction)
+        archivos = vault or (bool(self.archivos) and necesita_archivos(instruction, user_id))
+        panel = bool(self.panel) and necesita_panel(instruction, user_id)
+        clave = (archivos, vault, panel)
+        if not any(clave):
+            return self.app
+        if clave not in self._grafos:
+            base = [t for t in self.tools if not (vault and t.name.startswith("notion_"))]
+            self._grafos[clave] = self._grafo(base + (self.archivos if archivos else []) + (self.panel if panel else []))
+        return self._grafos[clave]
 
 
 # ─── Factory con caché + TTL de 12 horas ────────────────────────────────────

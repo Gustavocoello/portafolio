@@ -13,6 +13,8 @@ services:
       MCP_ARCHIVOS: http://100.68.212.44:8005/mcp-server/mcp
       # Archivos de la laptop Windows (previseguros-laptop): solo responde con la laptop encendida (scripts/archivos-windows.ps1)
       MCP_ARCHIVOS_LAPTOP: http://100.118.245.101:8005/mcp-server/mcp
+      # Panel BrokerIA: TARS entra a /api/tars con su llave (PANEL_TARS_TOKEN en el .env; sin ella no carga el panel)
+      PANEL_URL: https://panel-api.brokeria.ec
     # Solo escucha en la máquina: la entrada desde internet es el túnel de Cloudflare.
     ports:
       - "127.0.0.1:8096:8000"
