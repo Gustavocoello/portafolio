@@ -16,7 +16,9 @@ logger = get_logger("email_tools")
 MAX_CUERPO = 4000  # caracteres por correo: suficiente para resumir sin llenar el contexto
 INICIO_CORREO = 65536  # bytes que bajan los avisos por correo: alcanza para cabeceras y texto, sin los adjuntos
 LISTA_CARPETA = re.compile(r'\((?P<flags>[^)]*)\) (?:"[^"]*"|NIL) (?P<nombre>.+)$')  # una línea de IMAP LIST
-IMAP_TIMEOUT = 20     # sin esto un servidor lento dejaba colgada la petición (y su hilo) sin límite
+ID_CORREO = re.compile(r"(?P<enviados>enviados\s*:\s*)?(?P<uid>\d+)", re.IGNORECASE)  # "[enviados:45]", "45", "id 45"
+MESES_IMAP = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+IMAP_TIMEOUT = 20    # sin esto un servidor lento dejaba colgada la petición (y su hilo) sin límite
 
 
 def _conectar() -> imaplib.IMAP4_SSL:
@@ -38,6 +40,16 @@ def _texto(msg: email.message.Message) -> str:
             datos = parte.get_payload(decode=True) or b""
             return datos.decode(parte.get_content_charset() or "utf-8", errors="replace")
     return "(el correo no tiene texto plano)"
+
+
+def _limpio(valor: str) -> str:
+    """Lo que el modelo escribe para buscar, sin saltos de línea ni espacios de más."""
+    return " ".join((valor or "").split())
+
+
+def _citar(valor: str) -> str:
+    """Cadena IMAP entre comillas, con las comillas y barras escapadas."""
+    return '"' + valor.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _resumen(uid: bytes, msg: email.message.Message) -> str:
@@ -117,12 +129,26 @@ def buscar_correos(texto: str = "", remitente: str = "", dias: int = 7, limite: 
                 return "No encontré la carpeta de enviados."
             imap.select(f'"{carpeta}"', readonly=True)
             prefijo = "enviados:"
-        criterios = ["SINCE", (get_now() - timedelta(days=max(1, dias))).strftime("%d-%b-%Y")]
-        if remitente:
-            criterios += ["TO" if enviados else "FROM", f'"{remitente}"']
-        if texto:  # el texto va como literal UTF-8: así sirven tildes y eñes
-            imap.literal = texto.encode("utf-8")
-            criterios += ["TEXT"]
+        desde = get_now() - timedelta(days=max(1, dias))
+        # el mes en inglés a mano: con %b y el idioma del sistema en español salía "nov." y el servidor lo rechaza
+        criterios = ["SINCE", f"{desde.day:02d}-{MESES_IMAP[desde.month - 1]}-{desde.year}"]
+        texto, remitente = _limpio(texto), _limpio(remitente)
+        filtrar_remitente = ""
+        # imaplib manda un solo literal (va al final): el texto con tildes va como literal y, si el remitente también
+        # las trae, se filtra aquí. Entre comillas solo va ASCII escapado: comillas o eñes ahí daban "Invalid
+        # characters in atom" o un error de ascii.
+        literal = texto if texto and not texto.isascii() else (remitente if remitente and not remitente.isascii() else "")
+        campo = "TO" if enviados else "FROM"
+        if remitente and remitente != literal:
+            if remitente.isascii():
+                criterios += [campo, _citar(remitente)]
+            else:
+                filtrar_remitente = remitente
+        if texto and texto != literal:
+            criterios += ["TEXT", _citar(texto)]
+        if literal:
+            imap.literal = literal.encode("utf-8")
+            criterios += ["TEXT" if literal == texto else campo]
             _, data = imap.uid("search", "CHARSET", "UTF-8", *criterios)
         else:
             _, data = imap.uid("search", None, *criterios)
@@ -135,6 +161,8 @@ def buscar_correos(texto: str = "", remitente: str = "", dias: int = 7, limite: 
             if not partes or not isinstance(partes[0], tuple):
                 continue
             msg = email.message_from_bytes(partes[0][1])
+            if filtrar_remitente and filtrar_remitente.casefold() not in _h(msg["To" if enviados else "From"]).casefold():
+                continue
             leido = "" if enviados or b"\\Seen" in partes[0][0] else " (sin leer)"
             linea = _resumen(uid, msg).replace(f"[{uid.decode()}]", f"[{prefijo}{uid.decode()}]", 1)
             if enviados:
@@ -149,7 +177,10 @@ def leer_correo(uid: str) -> str:
     """Devuelve remitente, asunto y texto de un correo por su id ("123" o "enviados:45")."""
     imap = _conectar()
     try:
-        limpio = uid.strip("[] ")
+        m = ID_CORREO.search(uid or "")
+        if not m:
+            return f"No existe el correo {uid}: usa el número entre corchetes de email_pendientes o email_buscar."
+        limpio = ("enviados:" if m["enviados"] else "") + m["uid"]
         if limpio.startswith("enviados:"):
             carpeta = _carpeta_enviados(imap)
             if not carpeta:

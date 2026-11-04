@@ -98,3 +98,33 @@ def test_buscar_todo_el_buzon_y_enviados(monkeypatch):
     enviados = correo.buscar_correos(enviados=True)
     assert "[enviados:3]" in enviados and "Cotización" in enviados
     assert "Adjunto" in correo.leer_correo("[enviados:3]")
+
+
+def test_buscar_con_comillas_y_tildes_en_el_remitente(monkeypatch):
+    # El modelo a veces escribe el remitente con comillas o tildes: antes iba sin escapar y el servidor respondía
+    # "Invalid characters in atom" (o imaplib fallaba con ascii)
+    buzon = FakeBuzon()
+    monkeypatch.setattr(correo, "_conectar", lambda: buzon)
+
+    correo.buscar_correos(remitente='"Ana" Banco')
+    args, literal = buzon.busquedas[-1]
+    assert args[0] is None and args[-2:] == ("FROM", '"\\"Ana\\" Banco"') and literal is None
+    assert args[2] in [f"{d:02d}" for d in range(1, 32)] or args[2][3:6] in correo.MESES_IMAP  # mes en inglés
+
+    correo.buscar_correos(remitente="José Pérez")
+    args, literal = buzon.busquedas[-1]
+    assert args[:2] == ("CHARSET", "UTF-8") and args[-1] == "FROM" and literal == "José Pérez".encode()
+
+    # los dos con tildes: el texto va como literal y el remitente se filtra al leer las cabeceras
+    lista = correo.buscar_correos(texto="póliza", remitente="Ánä")
+    args, literal = buzon.busquedas[-1]
+    assert literal == "póliza".encode() and "FROM" not in args
+    assert lista.endswith("Los más recientes:\n")  # ninguno es de "Ánä"
+
+
+def test_leer_acepta_el_id_como_lo_escriba_el_modelo(monkeypatch):
+    buzon = FakeBuzon()
+    monkeypatch.setattr(correo, "_conectar", lambda: buzon)
+    assert "Renovar" in correo.leer_correo("id 7")
+    assert "Adjunto" in correo.leer_correo("Enviados: 3")
+    assert "No existe" in correo.leer_correo("el de Ana")

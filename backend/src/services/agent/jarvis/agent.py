@@ -13,7 +13,7 @@ from src.services.agent.common.base_agent import BaseAgent
 from src.services.llm.chat.llm_router import get_langchain_llm
 
 from src.services.agent.jarvis.tool import build_jarvis_tools
-from src.services.agent.jarvis.tools.archivos import archivos_disponibles, build_archivos_tools, necesita_archivos
+from src.services.agent.jarvis.tools.archivos import archivos_disponibles, build_archivos_tools, es_del_vault, necesita_archivos
 
 def get_jarvis_template():
     """Genera el template maestro leyendo AGENT.md y agregando sufijos de LangChain."""
@@ -52,9 +52,16 @@ class JarvisAgent(BaseAgent):
         super().__init__(llm, tools, template)
         # Archivos y vault de home-lab-laptop: un segundo grafo con esas herramientas, que solo responde cuando el
         # mensaje las necesita (cada herramienta agranda todos los pedidos al modelo)
-        self.app_archivos = self._grafo(tools + build_archivos_tools(user_id)) if archivos_disponibles() else None
+        self.app_archivos = self.app_vault = None
+        if archivos_disponibles():
+            archivos = build_archivos_tools(user_id)
+            self.app_archivos = self._grafo(tools + archivos)
+            # "vault" o "inbox" sin decir Notion: sin las herramientas de Notion, que el modelo a veces elegía igual
+            self.app_vault = self._grafo([t for t in tools if not t.name.startswith("notion_")] + archivos)
 
     def _app_para(self, instruction: str, user_id: str):
+        if self.app_vault and es_del_vault(instruction):
+            return self.app_vault
         if self.app_archivos and necesita_archivos(instruction, user_id):
             return self.app_archivos
         return self.app

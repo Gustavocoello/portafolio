@@ -48,3 +48,20 @@ def test_al_modelo_va_solo_el_final_del_hilo():
     corto = recortar_historial(hilo)
     assert len(corto) <= 20 and isinstance(corto[0], HumanMessage) and corto[-1].content == "r29"
     assert recortar_historial(hilo[:8]) == hilo[:8]
+
+
+def test_la_respuesta_no_empieza_con_su_nombre():
+    from src.services.agent.jarvis.voz import sin_nombre_al_inicio
+    assert sin_nombre_al_inicio("TARS: sí, tienes tres correos.") == "Sí, tienes tres correos."
+    assert sin_nombre_al_inicio("Tars aquí. Revisé tu agenda.") == "Revisé tu agenda."
+    assert sin_nombre_al_inicio("Soy TARS, ¿en qué te ayudo?") == "¿en qué te ayudo?"
+    assert sin_nombre_al_inicio("Tarsis queda lejos.") == "Tarsis queda lejos."  # no es su nombre
+    assert sin_nombre_al_inicio("TARS.") == "TARS."  # sin nada más, se deja
+
+
+def test_vault_sin_notion():
+    from src.services.agent.jarvis.tools.archivos import es_del_vault
+    assert es_del_vault("¿Qué hay en mi vault/inbox?")
+    assert es_del_vault("Revisa el Inbox de Obsidian")
+    assert not es_del_vault("busca el inbox en Notion")
+    assert not es_del_vault("¿qué tengo en la agenda?")
