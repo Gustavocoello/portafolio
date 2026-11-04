@@ -27,6 +27,13 @@ const BARGE_IN_THRESHOLD = 0.3; // sin reconocimiento de voz: hablar fuerte 0,4 
 const BARGE_IN_MS = 400;
 const SILENCE_MS = 900;      // silencio que cierra una frase
 const MIN_PHRASE_MS = 400;   // más corto que esto es un ruido, no una frase
+const MAX_PHRASE_MS = 15000; // tope: si el ruido de fondo no deja oír el silencio, la frase se cierra igual
+// Ruido de fondo (ventilador, aire): se mide solo y la voz tiene que pasarlo con margen. Baja rápido cuando hay
+// silencio y sube despacio (~10 s), así un ruido constante se aprende y la voz no se toma por ruido.
+const NOISE_DOWN = 0.05;
+const NOISE_UP = 0.002;
+const NOISE_MARGIN = 2;      // la voz debe ser el doble del ruido de fondo...
+const NOISE_EXTRA = 0.04;    // ...más esto
 const FOLLOW_UP_MS = 8000;   // tras hablar con TARS, la siguiente frase no necesita su nombre (como Alexa)
 const NAME_GRACE_MS = 1000;  // el reconocimiento del navegador llega un poco después de que termina la frase
 const NOTICES_EVERY_MS = 60000;
@@ -168,7 +175,7 @@ function useVoice(active, tars) {
     let busy = false;       // TARS escucha, piensa o habla: no se graba (no escucharse a sí mismo)
     let speaking = false;
     let ptt = false;        // barra espaciadora presionada
-    let followUntil = 0, startedAt = 0, lastVoice = 0, heardNameAt = -Infinity, loudSince = 0;
+    let followUntil = 0, startedAt = 0, lastVoice = 0, heardNameAt = -Infinity, loudSince = 0, noise = 0;
     let soundsLikeNameAt = -Infinity, lastHeard = "";
     let current = null;     // { controller, source } de la respuesta que está sonando
     let saying = new Set(); // palabras de lo que TARS dice en esta respuesta: si Chrome las oye, es su eco
@@ -439,6 +446,9 @@ function useVoice(active, tars) {
       const tick = () => {
         if (stopped) return;
         const level = audioLevel(mic, buffer);
+        noise += (level - noise) * (level < noise ? NOISE_DOWN : NOISE_UP);
+        const voiceThreshold = Math.max(VOICE_THRESHOLD, noise * NOISE_MARGIN + NOISE_EXTRA);
+        diag.umbral = voiceThreshold;
         diag.nivel = Math.max(level, (diag.nivel || 0) * 0.97); // pico que baja despacio, para leerlo en pantalla
         diag.grabando = !!recorder;
         setUserLevel((prev) => prev * 0.82 + (busy && !speaking ? 0 : level) * 0.18);
@@ -448,7 +458,7 @@ function useVoice(active, tars) {
         if (speaking && tarsRef.current && !ptt) {
           // Graba desde que empiezas a hablarle encima, para no perder el inicio si resulta que lo interrumpes;
           // si no era voz tuya, se descarta en silencio
-          if (level > VOICE_THRESHOLD) {
+          if (level > voiceThreshold) {
             lastVoice = now;
             if (!recorder) startRecording(now, false);
             duck(true);
@@ -456,7 +466,7 @@ function useVoice(active, tars) {
           if (now - lastVoice > DUCK_MS) duck(false);
           // Sin reconocimiento del navegador, interrumpir es hablarle fuerte un momento
           if (!listensLocally()) {
-            if (level > BARGE_IN_THRESHOLD) {
+            if (level > Math.max(BARGE_IN_THRESHOLD, voiceThreshold * 1.5)) {
               loudSince ||= now;
               if (now - loudSince > BARGE_IN_MS) bargeIn("voz fuerte");
             } else loudSince = 0;
@@ -464,12 +474,13 @@ function useVoice(active, tars) {
         }
         if (!speaking) duck(false); // la próxima respuesta empieza con su volumen normal
         if (tarsRef.current && !busy && !ptt) {
-          if (level > VOICE_THRESHOLD) {
+          if (level > voiceThreshold) {
             lastVoice = now;
             if (!recorder) startRecording(now);
           } else if (recorder && now - lastVoice > SILENCE_MS) {
             stopRecording(lastVoice - startedAt);
           }
+          if (recorder && now - startedAt > MAX_PHRASE_MS) stopRecording(now - startedAt);
         }
         raf = requestAnimationFrame(tick);
       };
@@ -877,7 +888,7 @@ const ReactiveSphere = forwardRef(function ReactiveSphere({ tars = null }, ref) 
         <pre style={{ position: "fixed", top: 8, left: 8, right: 8, margin: 0, padding: 8, fontSize: 12, lineHeight: 1.4,
           whiteSpace: "pre-wrap", color: "#cfe8ff", background: "rgba(0,0,0,0.7)", borderRadius: 8, zIndex: 10 }}>
           {[
-            `volumen: ${(debugInfo.nivel || 0).toFixed(3)}  (graba desde ${VOICE_THRESHOLD})${debugInfo.grabando ? "  ● grabando" : ""}`,
+            `volumen: ${(debugInfo.nivel || 0).toFixed(3)}  (graba desde ${(debugInfo.umbral || VOICE_THRESHOLD).toFixed(3)})${debugInfo.grabando ? "  ● grabando" : ""}`,
             `fase: ${phase}  |  reconocedor: ${debugInfo.reconocedor || "-"}${debugInfo.error ? `  (último error: ${debugInfo.error})` : ""}`,
             `Chrome oyó: ${debugInfo.oido || "-"}`,
             `decisión: ${debugInfo.decision || "-"}`,
