@@ -1,6 +1,6 @@
 """Archivos y vault de home-lab-laptop y archivos de la laptop Windows (el mismo MCP en los dos, por Tailscale; ver
 servers/mcp_servers/files). Cada ruta va al equipo de su primera carpeta: vault/ y archivos/ a home-lab-laptop;
-documentos/, descargas/, escritorio/, work/ y datos/ a la laptop Windows, que solo responde si está encendida.
+usuario/, documentos/, descargas/, escritorio/, imagenes/, work/ y datos/ a la laptop Windows, que solo responde si está encendida.
 
 Leer es directo. Cambiar algo va en dos pasos y lo exige este código, no el modelo: archivos_proponer_cambio lo
 valida en el servidor sin hacerlo y lo deja pendiente; archivos_confirmar_cambio lo ejecuta solo en un turno
@@ -34,7 +34,7 @@ EQUIPOS = {"homelab": ("MCP_ARCHIVOS", "home-lab-laptop"), "laptop": ("MCP_ARCHI
 
 
 def _raices_laptop() -> set[str]:
-    texto = os.getenv("MCP_ARCHIVOS_LAPTOP_RAICES", "documentos,descargas,escritorio,work,datos")
+    texto = os.getenv("MCP_ARCHIVOS_LAPTOP_RAICES", "usuario,documentos,descargas,escritorio,imagenes,work,datos")
     return {r.strip() for r in texto.split(",") if r.strip()}
 
 
@@ -116,8 +116,8 @@ def build_archivos_tools(user_id: str) -> list:
     def archivos_listar(ruta: str = "") -> str:
         """Lista una carpeta de los archivos de Gustavo. Sin ruta, muestra las carpetas disponibles. En home-lab-laptop:
         vault/ (su vault de Obsidian: 00-Inbox, 10-Proyectos, 20-Áreas, 30-Recursos, 40-Archivo) y archivos/. En su
-        laptop Windows, solo si está encendida: documentos/, descargas/, escritorio/, datos/ y work/ (su código,
-        solo lectura). Rutas como 'vault/10-Proyectos/TARS' o 'descargas/factura.pdf'."""
+        laptop Windows, solo si está encendida: usuario/ (toda su carpeta de usuario), documentos/, descargas/,
+        escritorio/, imagenes/, datos/ y work/ (su código). Rutas como 'vault/10-Proyectos/TARS' o 'descargas/factura.pdf'."""
         if not ruta.strip().strip("/"):
             return _en_todos(user_id, "archivos_listar", {"ruta": ""})
         return _llamar(user_id, "archivos_listar", {"ruta": ruta}, _equipo(ruta))
